@@ -241,7 +241,7 @@ namespace libtorrent
 			std::string pe = e;
 			// if we're not using UNC paths on windows, there
 			// are certain filenames we're not allowed to use
-			const static char const* reserved_names[] =
+			static char const* reserved_names[] =
 			{
 				"con", "prn", "aux", "clock$", "nul",
 				"com0", "com1", "com2", "com3", "com4",
