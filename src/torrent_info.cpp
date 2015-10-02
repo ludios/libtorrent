@@ -76,11 +76,7 @@ namespace libtorrent
 	
 	bool valid_path_character(char c)
 	{
-#ifdef TORRENT_WINDOWS
 		static const char invalid_chars[] = "?<>\"|\b*:";
-#else
-		static const char invalid_chars[] = "";
-#endif
 		if (c >= 0 && c < 32) return false;
 		return std::strchr(invalid_chars, c) == 0;
 	}
@@ -243,7 +239,6 @@ namespace libtorrent
 		for (char const* e = split.c_str(); e != 0; e = next_path_element(e))
 		{
 			std::string pe = e;
-#if !TORRENT_USE_UNC_PATHS && defined TORRENT_WINDOWS
 			// if we're not using UNC paths on windows, there
 			// are certain filenames we're not allowed to use
 			const static char const* reserved_names[] =
@@ -266,7 +261,6 @@ namespace libtorrent
 			{
 				pe += "_";
 			}
-#endif
 			if (!valid_path_element(pe)) continue;
 			trim_path_element(pe);
 			new_path = combine_path(new_path, pe);
