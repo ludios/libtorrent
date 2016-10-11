@@ -122,8 +122,6 @@ EXTRA_DIST = \
   CMakeLists.txt \
   setup.py \
   LICENSE \
-  $(DOCS_PAGES) \
-  $(DOCS_IMAGES) \
   $(ED25519_SOURCE)
 
 pkgconfigdir   = $(libdir)/pkgconfig
