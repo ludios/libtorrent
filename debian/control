@@ -19,7 +19,7 @@ Homepage: http://www.rasterbar.com/products/libtorrent/index.html
 X-Python-Version: >= 2.4
 X-Python3-Version: >= 3.1
 
-Package: libtorrent-rasterbar9
+Package: libtorrent-rasterbar8
 Architecture: any
 Pre-Depends: dpkg (>= 1.15.6~)
 Depends: ${shlibs:Depends}, ${misc:Depends}
@@ -41,7 +41,7 @@ Section: libdevel
 Architecture: any
 Pre-Depends: dpkg (>= 1.15.6~)
 Depends: ${misc:Depends},
-         libtorrent-rasterbar9 (= ${binary:Version}),
+         libtorrent-rasterbar8 (= ${binary:Version}),
          libboost-system-dev,
          libssl-dev,
          libgeoip-dev,
@@ -63,7 +63,7 @@ Section: debug
 Priority: extra
 Architecture: any
 Pre-Depends: dpkg (>= 1.15.6~)
-Depends: ${misc:Depends}, libtorrent-rasterbar9 (= ${binary:Version})
+Depends: ${misc:Depends}, libtorrent-rasterbar8 (= ${binary:Version})
 Description: Debug symbols for libtorrent-rasterbar
  Bittorrent library by Rasterbar Software (Arvid Norberg).
  libtorrent-rasterbar is a C++ library that aims to be a good alternative to
