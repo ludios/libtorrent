@@ -1,38 +1,8 @@
-libtorrent-rasterbar (1.1.0-3) unstable; urgency=medium
+libtorrent-rasterbar (1.0.9-1) unstable; urgency=medium
 
-  * fix-get-ip-filter.patch: Backport upstream fix for
-    crash in session::get_ip_filter (Closes: #834630).
-  * 1.1.0-python-fixes.patch: Backport a number of upstream
-    commits with fixes for the Python bindings.
-  * fix-invalid-input-crash.patch: Backport upstream commit
-    fixing crash on invalid input in http_parser.
+  * See commit log
 
- -- Andrew Starr-Bochicchio <asb@debian.org>  Tue, 23 Aug 2016 20:50:44 -0400
-
-libtorrent-rasterbar (1.1.0-2) unstable; urgency=medium
-
-  * Fix builds on arches where the multiarch tuple (i386-*) and
-    the GNU tuple (i686-*) differ (Closes: #833944).
-  * remove-msse4.2.patch: Backport upstream commit removing
-    -msse4.2 commandline option from configure script (Closes: #833944)
-
- -- Andrew Starr-Bochicchio <asb@debian.org>  Wed, 10 Aug 2016 20:23:29 -0400
-
-libtorrent-rasterbar (1.1.0-1) unstable; urgency=medium
-
-  * New upstream release.
-   - Fixes CVE-2016-5301, crash while parsing invalid
-     chunked HTTP or UPnP response (Closes: #826380).
-  * New package libtorrent-rasterbar9, bump library soname.
-  * Drop python-clean-without-bjam.patch, applied upstream.
-  * Drop missing_rst_file.patch, applied upstream.
-  * Build depend on libboost-chrono-dev and libboost-random-dev.
-  * python-dbg-build-fix.patch: Fix building bindings with python-dbg.
-    Thanks to Calum Lind.
-  * Bump Standards-Version to 3.9.8, no changes.
-  * Build with dh_autoreconf.
-
- -- Andrew Starr-Bochicchio <asb@debian.org>  Mon, 08 Aug 2016 23:38:37 -0400
+ -- Nobody <nobody@localhost>  Tue, 11 Oct 2016 20:50:44 -0000
 
 libtorrent-rasterbar (1.0.7-1) unstable; urgency=medium
 
