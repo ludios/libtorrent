@@ -1,8 +1,8 @@
-libtorrent-rasterbar (1.0.9-1) unstable; urgency=medium
+libtorrent-rasterbar (1.0.10-1) unstable; urgency=medium
 
   * See commit log
 
- -- Nobody <nobody@localhost>  Tue, 11 Oct 2016 20:50:44 -0000
+ -- Nobody <nobody@localhost>  Fri, 23 Dec 2016 00:00:00 -0000
 
 libtorrent-rasterbar (1.0.7-1) unstable; urgency=medium
 
