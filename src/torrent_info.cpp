@@ -86,25 +86,13 @@ namespace libtorrent {
 
 	namespace {
 
-	// Which characters are valid is primarily determined by the
-	// filesystem, so this logic is an approximation. Note that forward- and
-	// backslash are filtered unconditionally and separately from this function.
+	// Note that forward- and backslash are filtered unconditionally and separately from this function.
 	bool valid_path_character(std::int32_t const c)
 	{
-#ifdef TORRENT_WINDOWS
-		// On windows, both the filesystem and the operating system impose
-		// restrictions.
+		// Windows has the most restrictive set of banned characters; enforce
+		// its restrictions even on other operating systems, because it's not
+		// uncommon to share downloaded files with other operating systems.
 		static const char invalid_chars[] = "?<>\"|\b*:";
-#elif defined TORRENT_ANDROID
-		// The Android kernel probably has similar restrictions as Linux (i.e.
-		// very few) but it appears some user-space system libraries impose
-		// additional restrictions, and it's probably more common to use FAT32
-		// style filesystems, which also further restricts valid characters
-		// https://cs.android.com/android/platform/superproject/+/master:frameworks/base/core/java/android/os/FileUtils.java;l=997?q=isValidFatFilenameChar
-		static const char invalid_chars[] = "\"*:<>?|";
-#else
-		static const char invalid_chars[] = "";
-#endif
 		if (c < 32) return false;
 		if (c > 127) return true;
 		return std::strchr(invalid_chars, static_cast<char>(c)) == nullptr;
@@ -316,7 +304,6 @@ namespace aux {
 			return;
 		}
 
-#ifdef TORRENT_WINDOWS
 		// remove trailing spaces and dots. These aren't allowed in filenames on windows
 		for (int i = int(path.size()) - 1; i >= 0; --i)
 		{
@@ -336,7 +323,6 @@ namespace aux {
 			path.erase(path.end() - 1);
 			return;
 		}
-#endif
 
 		if (path.empty()) path = "_";
 	}
