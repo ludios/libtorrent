@@ -303,7 +303,7 @@ namespace libtorrent {
 		// the number of non-pad blocks in this piece. Any blocks past this will
 		// be assumed we have already
 
-		int const payload_blocks = blocks_per_piece() - pad_bytes_in_piece(piece) / block_size();
+		int const payload_blocks = payload_blocks_in_piece(piece);
 
 		int block_idx = 0;
 		for (auto& info : mutable_blocks_for_piece(ret))
@@ -2575,6 +2575,11 @@ get_out:
 			return blocks_per_piece();
 	}
 
+	int piece_picker::payload_blocks_in_piece(piece_index_t const index) const
+	{
+		return blocks_in_piece(index) - pad_bytes_in_piece(index) / block_size();
+	}
+
 	bool piece_picker::is_piece_free(piece_index_t const piece
 		, typed_bitfield<piece_index_t> const& bitmask) const
 	{
@@ -2704,7 +2709,7 @@ get_out:
 		}
 
 		// pick a new piece
-		int payload_blocks = blocks_in_piece(piece) - pad_bytes_in_piece(piece) / block_size();
+		int payload_blocks = payload_blocks_in_piece(piece);
 
 		if (prefer_contiguous_blocks == 0)
 		{
@@ -2734,7 +2739,7 @@ get_out:
 				ignore.push_back(k);
 
 				TORRENT_ASSERT(m_piece_map[k].priority(this) > 0);
-				payload_blocks = blocks_in_piece(k) - pad_bytes_in_piece(k) / block_size();
+				payload_blocks = payload_blocks_in_piece(k);
 				TORRENT_ASSERT(is_piece_free(k, pieces));
 				for (int j = 0; j < payload_blocks; ++j)
 				{

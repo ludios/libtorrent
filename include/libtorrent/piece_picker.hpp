@@ -433,6 +433,10 @@ namespace libtorrent {
 		// returns the number of blocks there is in the given piece
 		int blocks_in_piece(piece_index_t) const;
 
+		// number of blocks in the given piece that carry real payload,
+		// i.e. excluding any trailing pad blocks
+		int payload_blocks_in_piece(piece_index_t) const;
+
 		// return the peer pointers to all peers that participated in
 		// this piece
 		std::vector<torrent_peer*> get_downloaders(piece_index_t) const;
