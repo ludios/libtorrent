@@ -185,6 +185,11 @@ namespace {
 			}
 		}
 
+		// same as on_erase_peers(), but for when the entire peer list was
+		// torn down at once; every stored torrent_peer is invalid, so there
+		// is no need to match individual pointers
+		void on_clear_peers() { m_block_hashes.clear(); }
+
 	private:
 
 		// this entry ties a specific block CRC to
@@ -351,6 +356,17 @@ namespace libtorrent {
 	{
 		if (auto* sb = dynamic_cast<smart_ban_plugin*>(ext))
 			sb->on_erase_peers(peers);
+	}
+
+	// Defined here for the same reason as smart_ban_notify_erase_peers()
+	// above: the dynamic_cast must happen where smart_ban_plugin's
+	// typeinfo is visible.
+	void smart_ban_notify_clear_peers(torrent_plugin* ext);
+
+	void smart_ban_notify_clear_peers(torrent_plugin* ext)
+	{
+		if (auto* sb = dynamic_cast<smart_ban_plugin*>(ext))
+			sb->on_clear_peers();
 	}
 
 	std::shared_ptr<torrent_plugin> create_smart_ban_plugin(torrent_handle const& th, client_data_t)
