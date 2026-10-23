@@ -943,3 +943,44 @@ TORRENT_TEST(resume_keeps_user_rename_to_original_duplicate_name)
 	torrent_handle h = ses.add_torrent(std::move(p));
 	TEST_EQUAL(h.torrent_file()->files().file_path(1_file), user_name);
 }
+
+namespace {
+
+// returns true if the web seed was rejected by the SSRF mitigation (rather
+// than being connected to)
+bool web_seed_ssrf_blocked(std::string const& url)
+{
+	settings_pack pack = settings();
+	pack.set_bool(settings_pack::ssrf_mitigation, true);
+	lt::session ses(pack);
+
+	file_storage fs = make_files({{100000, false}}, 0x8000);
+	add_torrent_params p;
+	p.ti = make_torrent(fs);
+	p.save_path = "ssrf_web_seed";
+	p.url_seeds.push_back(url);
+	ses.add_torrent(std::move(p));
+
+	auto const end = lt::clock_type::now() + lt::seconds(5);
+	while (lt::clock_type::now() < end)
+	{
+		ses.wait_for_alert(lt::milliseconds(100));
+		std::vector<alert*> alerts;
+		ses.pop_alerts(&alerts);
+		for (alert const* a : alerts)
+		{
+			auto const* usa = alert_cast<url_seed_alert>(a);
+			if (usa && usa->error == lt::errors::ssrf_mitigation) return true;
+		}
+	}
+	return false;
+}
+
+} // anonymous namespace
+
+// a web seed on the local network may not use query string parameters
+TORRENT_TEST(web_seed_ssrf_query_string)
+{
+	TEST_CHECK(web_seed_ssrf_blocked("http://127.0.0.1:1/file?x=1"));
+	TEST_CHECK(web_seed_ssrf_blocked("http://[::1]:1/file?x=1"));
+}
