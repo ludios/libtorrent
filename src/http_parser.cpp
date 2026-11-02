@@ -174,9 +174,12 @@ namespace libtorrent {
 		std::tuple<int, int> ret(0, 0);
 		std::ptrdiff_t start_pos = m_recv_buffer.size();
 
+		// the receive buffer may have been moved to a new allocation, always
+		// refer to the one we were just given, even if it has no new data
+		m_recv_buffer = recv_buffer;
+
 		// early exit if there's nothing new in the receive buffer
 		if (start_pos == recv_buffer.size()) return ret;
-		m_recv_buffer = recv_buffer;
 
 		if (m_state == error_state)
 		{
