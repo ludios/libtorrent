@@ -31,7 +31,7 @@ POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "test.hpp"
-#include "setup_transfer.hpp" // for load_file
+#include "setup_transfer.hpp" // for load_file, make_torrent, wait_for_seeding
 
 #include "libtorrent/flags.hpp"
 #include "libtorrent/alert_types.hpp"
@@ -40,7 +40,13 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/error_code.hpp"
 #include "libtorrent/aux_/path.hpp"
 #include "libtorrent/hasher.hpp"
+#include "libtorrent/file_storage.hpp"
+#include "libtorrent/torrent_flags.hpp"
+#include "libtorrent/torrent_handle.hpp"
+#include "libtorrent/torrent_status.hpp"
 
+#include <array>
+#include <climits>
 #include <iostream>
 
 namespace {
@@ -352,5 +358,95 @@ TORRENT_TEST(ec_add_torrent)
 			TEST_ERROR(e.message() + " != " + test_case.expected_error.message());
 		}
 		++i;
+	}
+}
+
+namespace {
+
+lt::torrent_status add_torrent_with_scrape(lt::session& ses, int const idx
+	, int const complete, int const incomplete, int const downloaded)
+{
+	// each case needs a distinct torrent, a session cannot hold the same one
+	// twice
+	std::string const name = "scrape_" + std::to_string(idx);
+	lt::file_storage fs;
+	fs.add_file(name, 0x4000);
+	fs.set_piece_length(0x4000);
+	fs.set_num_pieces(1);
+
+	lt::add_torrent_params atp;
+	atp.ti = make_torrent(fs);
+	atp.save_path = ".";
+	// seed mode makes the torrent finished right away, which is what makes
+	// seed_rank() consult the scrape counters. There are no files on disk, so
+	// verifying them would leave seed mode. Not auto managed, so the torrent
+	// is never paused by the queuing logic
+	atp.flags = lt::torrent_flags::seed_mode | lt::torrent_flags::no_verify_files;
+	atp.num_complete = complete;
+	atp.num_incomplete = incomplete;
+	atp.num_downloaded = downloaded;
+
+	lt::torrent_handle const h = ses.add_torrent(atp);
+
+	// seed_rank() is only meaningful once the resume data check has completed
+	wait_for_seeding(ses, name.c_str());
+	lt::torrent_status const st = h.status();
+	TEST_EQUAL(st.state, lt::torrent_status::seeding);
+	return st;
+}
+
+}
+
+TORRENT_TEST(add_torrent_scrape_data)
+{
+	int const no_seeds = 0x20000000;
+	int const prio_mask = 0x0fffffff;
+	// the scrape counters are stored in 24 bit fields, with the all-ones value
+	// reserved for "unknown"
+	int const max_scrape = 0xfffffe;
+
+	// the seed_ratio_not_met and recently_started bits depend on timing, so
+	// they are not part of the expected ranks
+	int const rank_mask = no_seeds | prio_mask;
+
+	struct scrape_test_t
+	{
+		int complete;
+		int incomplete;
+		int downloaded;
+		int expected_complete;
+		int expected_incomplete;
+		int expected_rank;
+	};
+
+	std::array<scrape_test_t, 8> const tests{{
+		{-1, -1, -1, -1, -1, no_seeds},
+		// values that don't fit are treated as unknown
+		{INT_MAX, INT_MAX, INT_MAX, -1, -1, no_seeds},
+		{INT_MIN, INT_MIN, INT_MIN, -1, -1, no_seeds},
+		{0xffffff, 0xffffff, 0xffffff, -1, -1, no_seeds},
+		{0, 0, 0, 0, 0, no_seeds},
+		// we are the one seed, so it's not counted
+		{1, max_scrape, max_scrape, 1, max_scrape, no_seeds | max_scrape},
+		// the rank saturates rather than overflow
+		{2, max_scrape, 0, 2, max_scrape, prio_mask},
+		{max_scrape, max_scrape, max_scrape, max_scrape, max_scrape, 1000},
+	}};
+
+	lt::session_params p;
+	p.settings.set_int(lt::settings_pack::alert_mask, lt::alert_category::error | lt::alert_category::status);
+	p.settings.set_str(lt::settings_pack::listen_interfaces, "127.0.0.1:6881");
+	lt::session ses(p);
+	int idx = 0;
+	for (auto const& t : tests)
+	{
+		std::cerr << "complete: " << t.complete << " incomplete: " << t.incomplete
+			<< " downloaded: " << t.downloaded << '\n';
+		lt::torrent_status const st = add_torrent_with_scrape(ses, idx++
+			, t.complete, t.incomplete, t.downloaded);
+		TEST_EQUAL(st.num_complete, t.expected_complete);
+		TEST_EQUAL(st.num_incomplete, t.expected_incomplete);
+		TEST_EQUAL(st.seed_rank & rank_mask, t.expected_rank);
+		TEST_CHECK(st.seed_rank >= 0);
 	}
 }
