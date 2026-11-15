@@ -287,6 +287,32 @@ TORRENT_TEST(parse_external_ip6)
 	TEST_EQUAL(resp.external_ip, addr6("f102:0304::ffff"));
 }
 
+// the intervals are 32 bit second counts, which are added to the current
+// time. Values that don't fit, or that would overflow that addition, are
+// expected to be limited to a week
+TORRENT_TEST(parse_interval_out_of_range)
+{
+	// 2^32 + 1 and INT_MAX
+	char const response[] = "d8:intervali4294967297e12:min intervali2147483647e5:peers0:e";
+	error_code ec;
+	tracker_response resp = parse_tracker_response(response, ec, {}, sha1_hash());
+
+	TEST_EQUAL(ec, error_code());
+	TEST_EQUAL(resp.interval.count(), 7 * 24 * 60 * 60);
+	TEST_EQUAL(resp.min_interval.count(), 7 * 24 * 60 * 60);
+}
+
+TORRENT_TEST(parse_negative_interval)
+{
+	char const response[] = "d8:intervali-1e12:min intervali-4294967297e5:peers0:e";
+	error_code ec;
+	tracker_response resp = parse_tracker_response(response, ec, {}, sha1_hash());
+
+	TEST_EQUAL(ec, error_code());
+	TEST_EQUAL(resp.interval.count(), 0);
+	TEST_EQUAL(resp.min_interval.count(), 0);
+}
+
 namespace {
 peer_entry extract_peer(char const* peer_field, error_code expected_ec, bool expected_ret)
 {
