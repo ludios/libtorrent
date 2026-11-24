@@ -666,13 +666,12 @@ void test_all_pieces_alerts(settings_pack sett)
 		{ return std::make_shared<piece_pass_plugin>(passed); });
 #endif
 
-	sett.set_int(settings_pack::alert_mask, sett.get_int(settings_pack::alert_mask)
-		| alert_category::file_progress | alert_category::piece_progress);
+	// settings() enables the file_progress and piece_progress alerts
 	lt::session ses(sett);
 	torrent_handle h = ses.add_torrent(p);
 
-	std::vector<piece_index_t> pieces;
-	std::vector<file_index_t> files;
+	// the piece and file alerts, in their order
+	std::vector<std::string> events;
 	bool checked = false;
 	bool rejected = false;
 	auto const deadline = lt::clock_type::now() + lt::seconds(10);
@@ -685,9 +684,9 @@ void test_all_pieces_alerts(settings_pack sett)
 		{
 			std::printf("%s\n", a->message().c_str());
 			if (auto const* pf = alert_cast<piece_finished_alert>(a))
-				pieces.push_back(pf->piece_index);
+				events.push_back("piece " + std::to_string(static_cast<int>(pf->piece_index)));
 			else if (auto const* fc = alert_cast<file_completed_alert>(a))
-				files.push_back(fc->index);
+				events.push_back("file " + std::to_string(static_cast<int>(fc->index)));
 			else if (alert_cast<fastresume_rejected_alert>(a))
 				rejected = true;
 			else if (alert_cast<torrent_checked_alert>(a))
@@ -698,14 +697,15 @@ void test_all_pieces_alerts(settings_pack sett)
 	// the pieces must come from the resume data, not from checking the files
 	TEST_CHECK(!rejected);
 
-	std::vector<piece_index_t> const expected_pieces{0_piece, 1_piece, 2_piece
-		, 3_piece, 4_piece, 5_piece};
-	std::vector<file_index_t> const expected_files{0_file, 1_file, 2_file, 4_file
-		, 6_file};
-	TEST_CHECK(pieces == expected_pieces);
-	TEST_CHECK(files == expected_files);
+	// a file's alert comes after the alert of the piece with its last byte
+	std::vector<std::string> const expected_events{"piece 0", "piece 1", "file 0"
+		, "file 1", "file 2", "piece 2", "file 4", "piece 3", "piece 4", "piece 5"
+		, "file 6"};
+	TEST_CHECK(events == expected_events);
 #ifndef TORRENT_DISABLE_EXTENSIONS
-	TEST_CHECK(passed == expected_pieces);
+	std::vector<piece_index_t> const expected_passed{0_piece, 1_piece, 2_piece
+		, 3_piece, 4_piece, 5_piece};
+	TEST_CHECK(passed == expected_passed);
 #endif
 
 	torrent_status const s = h.status();
