@@ -129,7 +129,7 @@ On xclank in 2026-11, while other work was loading it, the debug build took 3 mi
 	cd cmake-build-debug/test
 	./test_resume -n "$(git rev-parse --show-toplevel)/test/test_resume.cpp.all_pieces_alerts"
 
-Don't add compiler warnings: upstream's CI builds with `warnings-as-errors=on`. As of 2026-11, the debug build from an empty `cmake-build-debug/` prints 3 warnings (`-Warray-bounds` twice and `-Wstringop-overflow` once), and the compiler prints none for the simulations (b2 itself warns about its configuration). An incremental build recompiles only the files that changed, and those that include them, so look for warnings in those files.
+Don't add compiler warnings: upstream's CI builds with `warnings-as-errors=on`. As of 2026-11, the debug build from an empty `cmake-build-debug/` prints 1 warning (`-Wstringop-overflow`, in `src/torrent.cpp`), the build with deprecated functions off prints 8 (that one, and `-Warray-bounds` 7 times: 6 in `src/torrent.cpp` and 1 in `src/mmap_disk_io.cpp`), and the compiler prints none for the simulations (b2 itself warns about its configuration). An incremental build recompiles only the files that changed, and those that include them, so look for warnings in those files.
 
 The builds and every test must pass, except for 3 cases of `test_upnp` (1 of `ctest`'s 107 tests), which fail as of 2026-11 without any change of yours (the same way with deprecated functions off; every simulation passes): `upnp_wipconn`, `upnp_wanipconnection` and `upnp_wanipconnection2` get no answer to their UPnP search over multicast on the user's machines, with and without the fork's commits. Run `test_upnp` with `-n`, and check that no other case of it fails.
 
