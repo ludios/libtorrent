@@ -48,6 +48,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/file.hpp"
 #include "libtorrent/alert_types.hpp"
 #include "setup_transfer.hpp"
+#include "make_torrent.hpp"
 #include "test_utils.hpp"
 
 #include <iostream>
@@ -609,6 +610,106 @@ TORRENT_TEST(piece_slots_seed_suggest_cache)
 	settings_pack sett = settings();
 	sett.set_int(settings_pack::suggest_mode, settings_pack::suggest_read_cache);
 	test_piece_slots_seed(sett);
+}
+
+namespace {
+
+void test_all_pieces_alerts(settings_pack sett)
+{
+	// resume data with every piece adds them all at once. Make sure that
+	// posts an alert for every piece and every file that isn't a pad file
+	// (including empty ones, wherever they are), in order
+	torrent_args args;
+	args.name("all_pieces")
+		.file("40000")
+		.file("0") // empty, inside piece 1
+		.file("25536")
+		.file("0") // empty, at the start of piece 2
+		.file("10000")
+		.file("22768,padfile")
+		.file("65636")
+		.file("0"); // empty, at the end
+	std::shared_ptr<torrent_info> ti = make_test_torrent(args);
+	TEST_EQUAL(ti->num_pieces(), 6);
+
+	std::string const save_path = "all_pieces_alerts_test";
+	generate_files(*ti, save_path);
+	// generate_files() doesn't create empty files, which the resume data
+	// check would miss
+	file_storage const& fs = ti->files();
+	for (auto const i : fs.file_range())
+	{
+		if (fs.file_size(i) == 0 && !fs.pad_file_at(i))
+			ofstream(combine_path(save_path, fs.file_path(i)).c_str());
+	}
+
+	add_torrent_params p;
+	p.ti = ti;
+	p.save_path = save_path;
+	p.have_pieces.resize(ti->num_pieces(), true);
+
+	sett.set_int(settings_pack::alert_mask, sett.get_int(settings_pack::alert_mask)
+		| alert_category::file_progress | alert_category::piece_progress);
+	lt::session ses(sett);
+	torrent_handle h = ses.add_torrent(p);
+
+	std::vector<piece_index_t> pieces;
+	std::vector<file_index_t> files;
+	bool checked = false;
+	bool rejected = false;
+	auto const deadline = lt::clock_type::now() + lt::seconds(10);
+	while (!checked && lt::clock_type::now() < deadline)
+	{
+		ses.wait_for_alert(lt::milliseconds(100));
+		std::vector<alert*> alerts;
+		ses.pop_alerts(&alerts);
+		for (alert const* a : alerts)
+		{
+			std::printf("%s\n", a->message().c_str());
+			if (auto const* pf = alert_cast<piece_finished_alert>(a))
+				pieces.push_back(pf->piece_index);
+			else if (auto const* fc = alert_cast<file_completed_alert>(a))
+				files.push_back(fc->index);
+			else if (alert_cast<fastresume_rejected_alert>(a))
+				rejected = true;
+			else if (alert_cast<torrent_checked_alert>(a))
+				checked = true;
+		}
+	}
+	TEST_CHECK(checked);
+	// the pieces must come from the resume data, not from checking the files
+	TEST_CHECK(!rejected);
+
+	std::vector<piece_index_t> const expected_pieces{0_piece, 1_piece, 2_piece
+		, 3_piece, 4_piece, 5_piece};
+	std::vector<file_index_t> const expected_files{0_file, 1_file, 2_file, 3_file
+		, 4_file, 6_file, 7_file};
+	TEST_CHECK(pieces == expected_pieces);
+	TEST_CHECK(files == expected_files);
+
+	torrent_status const s = h.status();
+	TEST_EQUAL(s.is_seeding, true);
+	TEST_EQUAL(s.num_pieces, ti->num_pieces());
+	TEST_EQUAL(s.total_wanted_done, s.total_wanted);
+	TEST_EQUAL(s.total_wanted, ti->total_size() - 22768);
+
+	std::vector<std::int64_t> const fp = h.file_progress();
+	for (auto const i : ti->files().file_range())
+		TEST_EQUAL(fp[std::size_t(static_cast<int>(i))], ti->files().file_size(i));
+}
+
+} // anonymous namespace
+
+TORRENT_TEST(all_pieces_alerts)
+{
+	test_all_pieces_alerts(settings());
+}
+
+TORRENT_TEST(all_pieces_alerts_suggest_cache)
+{
+	settings_pack sett = settings();
+	sett.set_int(settings_pack::suggest_mode, settings_pack::suggest_read_cache);
+	test_all_pieces_alerts(sett);
 }
 
 // TODO: test what happens when loading a resume file with both piece priorities

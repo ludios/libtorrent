@@ -2286,6 +2286,18 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 			// there are either no files for this torrent
 			// or the resume_data was accepted
 
+			// when the resume data has every piece, and no peer or piece deadline
+			// needs to hear about each of them, add them all at once (below)
+			// instead of one at a time, which takes long with many pieces
+			bool const have_all_pieces = !error && m_add_torrent_params
+				&& m_add_torrent_params->have_pieces.size() == m_torrent_file->num_pieces()
+				&& m_add_torrent_params->have_pieces.all_set()
+				&& m_connections.empty()
+#ifndef TORRENT_DISABLE_STREAMING
+				&& m_time_critical_pieces.empty()
+#endif
+				;
+
 			if (m_seed_mode)
 			{
 				set_have_all(true);
@@ -2301,6 +2313,49 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 					{
 						if (!m_add_torrent_params->verified_pieces[i]) continue;
 						m_verified.set_bit(i);
+					}
+				}
+			}
+			else if (have_all_pieces)
+			{
+				// --- ALL PIECES ---
+
+				// do in bulk what adding each piece in the next branch does. There
+				// are no unfinished pieces to add, since we have every piece
+				need_picker();
+				m_picker->we_have_all();
+				m_file_progress.clear();
+				m_file_progress.init(*m_picker, m_torrent_file->files());
+
+				int const num_pieces = m_torrent_file->num_pieces();
+				inc_stats_counter(counters::num_piece_passed, num_pieces);
+				inc_stats_counter(counters::num_have_pieces, num_pieces);
+				update_gauge();
+
+				// post the alerts that we_have() posts for each piece, in the same
+				// order, since clients may need them, e.g. to know which files are
+				// complete. Unlike we_have(), also post them for empty files at the
+				// start of a piece or at the end of the torrent
+				bool const post_pieces = m_ses.alerts().should_post<piece_finished_alert>();
+				bool const post_files = m_ses.alerts().should_post<file_completed_alert>();
+				if (post_pieces || post_files)
+				{
+					file_storage const& fs = m_torrent_file->files();
+					file_index_t file(0);
+					for (piece_index_t const i : fs.piece_range())
+					{
+						if (post_pieces)
+							m_ses.alerts().emplace_alert<piece_finished_alert>(get_handle(), i);
+
+						// a file is complete with the piece that has its last byte
+						std::int64_t const piece_end = std::int64_t(static_cast<int>(i))
+							* fs.piece_length() + fs.piece_size(i);
+						for (; file < fs.end_file()
+							&& fs.file_offset(file) + fs.file_size(file) <= piece_end; ++file)
+						{
+							if (post_files && !fs.pad_file_at(file))
+								m_ses.alerts().emplace_alert<file_completed_alert>(get_handle(), file);
+						}
 					}
 				}
 			}
