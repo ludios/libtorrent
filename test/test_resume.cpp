@@ -617,8 +617,9 @@ namespace {
 void test_all_pieces_alerts(settings_pack sett)
 {
 	// resume data with every piece adds them all at once. Make sure that
-	// posts an alert for every piece and every file that isn't a pad file
-	// (including empty ones, wherever they are), in order
+	// posts the same alerts as adding them one at a time: for every piece,
+	// and for every file that isn't a pad file, except empty files at the
+	// start of a piece or at the end of the torrent
 	torrent_args args;
 	args.name("all_pieces")
 		.file("40000")
@@ -682,8 +683,8 @@ void test_all_pieces_alerts(settings_pack sett)
 
 	std::vector<piece_index_t> const expected_pieces{0_piece, 1_piece, 2_piece
 		, 3_piece, 4_piece, 5_piece};
-	std::vector<file_index_t> const expected_files{0_file, 1_file, 2_file, 3_file
-		, 4_file, 6_file, 7_file};
+	std::vector<file_index_t> const expected_files{0_file, 1_file, 2_file, 4_file
+		, 6_file};
 	TEST_CHECK(pieces == expected_pieces);
 	TEST_CHECK(files == expected_files);
 

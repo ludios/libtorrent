@@ -2334,8 +2334,7 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 
 				// post the alerts that we_have() posts for each piece, in the same
 				// order, since clients may need them, e.g. to know which files are
-				// complete. Unlike we_have(), also post them for empty files at the
-				// start of a piece or at the end of the torrent
+				// complete
 				bool const post_pieces = m_ses.alerts().should_post<piece_finished_alert>();
 				bool const post_files = m_ses.alerts().should_post<file_completed_alert>();
 				if (post_pieces || post_files)
@@ -2353,8 +2352,16 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 						for (; file < fs.end_file()
 							&& fs.file_offset(file) + fs.file_size(file) <= piece_end; ++file)
 						{
-							if (post_files && !fs.pad_file_at(file))
-								m_ses.alerts().emplace_alert<file_completed_alert>(get_handle(), file);
+							if (!post_files || fs.pad_file_at(file)) continue;
+
+							// file_progress::update() never reaches an empty file at the
+							// start of a piece or at the end of the torrent
+							std::int64_t const offset = fs.file_offset(file);
+							if (fs.file_size(file) == 0
+								&& (offset % fs.piece_length() == 0 || offset == fs.total_size()))
+								continue;
+
+							m_ses.alerts().emplace_alert<file_completed_alert>(get_handle(), file);
 						}
 					}
 				}
