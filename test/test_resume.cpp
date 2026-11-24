@@ -719,6 +719,14 @@ void test_all_pieces_alerts(settings_pack sett
 	std::vector<std::int64_t> const fp = h.file_progress();
 	for (auto const i : ti->files().file_range())
 		TEST_EQUAL(fp[std::size_t(static_cast<int>(i))], ti->files().file_size(i));
+
+	// a seed keeps its picker, which counts the peers that have each piece,
+	// only to suggest pieces from its read cache
+	bool const suggest = sett.get_int(settings_pack::suggest_mode)
+		== settings_pack::suggest_read_cache;
+	std::vector<int> availability;
+	h.piece_availability(availability);
+	TEST_EQUAL(int(availability.size()), suggest ? ti->num_pieces() : 0);
 }
 
 } // anonymous namespace

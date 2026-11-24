@@ -2346,9 +2346,12 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 
 				// do in bulk what adding each piece in the next branch does. There
 				// are no unfinished pieces to add, since we have every piece.
-				// init() may have made no picker
-				if (has_picker())
+				// init() may have made no picker, but a seed keeps one to suggest
+				// pieces from its read cache
+				if (has_picker() || settings().get_int(settings_pack::suggest_mode)
+					== settings_pack::suggest_read_cache)
 				{
+					need_picker();
 					m_picker->we_have_all();
 					m_file_progress.clear();
 					m_file_progress.init(*m_picker, m_torrent_file->files());
