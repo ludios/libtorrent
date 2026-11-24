@@ -1018,6 +1018,16 @@ TORRENT_TEST(sanitize_path_colon)
 	TEST_EQUAL(path, "foo_bar");
 }
 
+TORRENT_TEST(sanitize_path_windows_invalid_chars)
+{
+	// the characters that Windows forbids in filenames are replaced on every
+	// OS, because downloaded files are often shared with Windows
+	using lt::aux::sanitize_append_path_element;
+	std::string path;
+	sanitize_append_path_element(path, "a<b>c\"d|e*f?g:h");
+	TEST_EQUAL(path, "a_b_c_d_e_f_g_h");
+}
+
 TORRENT_TEST(verify_encoding)
 {
 	using aux::verify_encoding;
