@@ -2338,6 +2338,7 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 				// had already, though.)
 				bool const post_pieces = m_ses.alerts().should_post<piece_finished_alert>();
 				bool const post_files = m_ses.alerts().should_post<file_completed_alert>();
+				torrent_handle const handle = get_handle();
 				file_storage const& fs = m_torrent_file->files();
 				file_index_t file(0);
 				for (piece_index_t const i : fs.piece_range())
@@ -2348,7 +2349,7 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 #endif
 
 					if (post_pieces)
-						m_ses.alerts().emplace_alert<piece_finished_alert>(get_handle(), i);
+						m_ses.alerts().emplace_alert<piece_finished_alert>(handle, i);
 
 					if (!post_files) continue;
 
@@ -2367,7 +2368,7 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 							&& (offset % fs.piece_length() == 0 || offset == fs.total_size()))
 							continue;
 
-						m_ses.alerts().emplace_alert<file_completed_alert>(get_handle(), file);
+						m_ses.alerts().emplace_alert<file_completed_alert>(handle, file);
 					}
 				}
 			}

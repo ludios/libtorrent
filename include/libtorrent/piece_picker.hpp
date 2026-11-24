@@ -258,7 +258,8 @@ namespace libtorrent {
 		void dec_refcount_all(const torrent_peer* peer);
 
 		// we have every piece. This is used when creating a piece picker for a
-		// seed
+		// seed, and when resume data has every piece (after priorities and pad
+		// bytes are set)
 		void we_have_all();
 
 		// A piece completes when it has passed the hash check *and* been
