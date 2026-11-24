@@ -1974,10 +1974,10 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 		// doesn't need a picker: don't make one here only to drop it once the
 		// resume data is checked. on_resume_data_checked() makes it if we don't
 		// have every piece after all, and need_picker() does if anything needs
-		// it before then. Do make it for piece priorities (the loop below
-		// applies them over the file priorities only if the picker exists) and
-		// for peers connected already (to a magnet link): code for peers
-		// expects a picker unless we're a seed
+		// it before then. Do make it for piece priorities (the loop below skips
+		// each default one until another makes the picker, and so would lose
+		// one over a skipped file) and for peers connected already (say, to a
+		// magnet link): code for peers expects a picker unless we're a seed
 		bool const defer_picker = resume_has_all_pieces(m_add_torrent_params.get()
 				, m_torrent_file->num_pieces())
 			&& m_add_torrent_params->piece_priorities.empty()
@@ -2286,8 +2286,7 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 		bool should_start_full_check = (status != status_t::no_error);
 
 		// init() might not have made a picker if the resume data has every
-		// piece (it doesn't make one in seed mode either, which the code below
-		// handles on its own)
+		// piece. Seed mode is left out: the code below handles it on its own
 		bool const resume_has_all = !m_seed_mode
 			&& resume_has_all_pieces(m_add_torrent_params.get(), m_torrent_file->num_pieces());
 
