@@ -712,6 +712,26 @@ TORRENT_TEST(we_have_all)
 	TEST_EQUAL(p->have().last_piece, true);
 }
 
+TORRENT_TEST(we_have_all_after_set_pad_bytes)
+{
+	auto p = setup_picker("1111111", "       ", "4404444", "");
+	p->set_pad_bytes(1_piece, 10);
+	p->set_pad_bytes(2_piece, 20);
+	p->set_pad_bytes(4_piece, default_piece_size);
+
+	TEST_EQUAL(p->have().num_pieces, 1);
+	TEST_EQUAL(p->have().pad_bytes, default_piece_size);
+
+	p->we_have_all();
+
+	TEST_EQUAL(p->have().num_pieces, 7);
+	TEST_EQUAL(p->have().pad_bytes, 30 + default_piece_size);
+	TEST_EQUAL(p->have_want().num_pieces, 6);
+	TEST_EQUAL(p->have_want().pad_bytes, 10 + default_piece_size);
+	TEST_EQUAL(p->want().num_pieces, 6);
+	TEST_EQUAL(p->want().pad_bytes, 10 + default_piece_size);
+}
+
 TORRENT_TEST(dont_pick_requested_blocks)
 {
 	// make sure requested blocks aren't picked

@@ -1778,6 +1778,9 @@ namespace libtorrent {
 		m_num_filtered = 0;
 		m_have_filtered_pad_bytes += m_filtered_pad_bytes;
 		m_filtered_pad_bytes = 0;
+		// every piece is had now, and so are all of their pad bytes
+		// (set_pad_bytes() may have been called before this)
+		m_have_pad_bytes = m_num_pad_bytes;
 		m_cursor = m_piece_map.end_index();
 		m_reverse_cursor = piece_index_t{0};
 		m_num_have = num_pieces();
