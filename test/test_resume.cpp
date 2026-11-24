@@ -756,7 +756,7 @@ void test_all_pieces_missing(settings_pack const& sett
 	, std::vector<download_priority_t> const& piece_priorities = {}
 	, int const wanted_pieces = 2)
 {
-	// the torrent may make no picker while it checks resume data with every
+	// the torrent may not make a picker while it checks resume data with every
 	// piece. When the files are missing, it must end up with the picker that
 	// it would have had: with the file priorities, the piece priorities over
 	// them, and the piece that is only padding

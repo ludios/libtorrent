@@ -150,7 +150,7 @@ bool is_downloading_state(int const st)
 	}
 }
 
-// whether the resume data has every piece, in which case init() may make no
+// whether the resume data has every piece, in which case init() may not make a
 // picker
 bool resume_has_all_pieces(add_torrent_params const* p, int const num_pieces)
 {
@@ -1971,13 +1971,13 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 		}
 
 		// when the resume data has every piece, we're probably a seed, which
-		// needs no picker: don't make one here only to drop it once the resume
-		// data is checked. on_resume_data_checked() makes it if we don't have
-		// every piece after all, and need_picker() does if anything needs it
-		// before then. Do make it for piece priorities (the loop below applies
-		// them over the file priorities only if the picker exists) and for
-		// peers connected already (to a magnet link): code for peers expects a
-		// picker unless we're a seed
+		// doesn't need a picker: don't make one here only to drop it once the
+		// resume data is checked. on_resume_data_checked() makes it if we don't
+		// have every piece after all, and need_picker() does if anything needs
+		// it before then. Do make it for piece priorities (the loop below
+		// applies them over the file priorities only if the picker exists) and
+		// for peers connected already (to a magnet link): code for peers
+		// expects a picker unless we're a seed
 		bool const defer_picker = resume_has_all_pieces(m_add_torrent_params.get()
 				, m_torrent_file->num_pieces())
 			&& m_add_torrent_params->piece_priorities.empty()
@@ -2285,9 +2285,9 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 
 		bool should_start_full_check = (status != status_t::no_error);
 
-		// init() may have made no picker if the resume data has every piece (it
-		// makes none in seed mode either, which the code below handles on its
-		// own)
+		// init() may not have made a picker if the resume data has every piece
+		// (it doesn't make one in seed mode either, which the code below
+		// handles on its own)
 		bool const resume_has_all = !m_seed_mode
 			&& resume_has_all_pieces(m_add_torrent_params.get(), m_torrent_file->num_pieces());
 
@@ -2346,8 +2346,8 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 
 				// do in bulk what adding each piece in the next branch does. There
 				// are no unfinished pieces to add, since we have every piece.
-				// init() may have made no picker, but a seed keeps one to suggest
-				// pieces from its read cache
+				// init() may not have made a picker, but a seed keeps one to
+				// suggest pieces from its read cache
 				if (has_picker() || settings().get_int(settings_pack::suggest_mode)
 					== settings_pack::suggest_read_cache)
 				{
