@@ -85,43 +85,56 @@ When there are multiple good ways to implement something, especially involving s
 
 # This fork
 
-This repository is a fork of upstream libtorrent (github.com/arvidn/libtorrent; the remote `upstream`). The fork's work is on `prime`: a commit of upstream's `RC_2_0` branch (3f5989b60db0 from 2026-10-05, 9 commits after the tag `v2.0.15`, as of 2026-11) plus the fork's own commits. `git log --oneline upstream/RC_2_0..prime` lists those commits, and each subject says what its commit changes. The fork's remote is `origin` (github.com/ludios/libtorrent); push to it only when the user asks.
+This repository is a fork of upstream libtorrent (github.com/arvidn/libtorrent; the remote `upstream`). The fork's work is on `prime`: a commit of upstream's `RC_2_0` branch (3f5989b607bc, 9 commits after the tag `v2.0.15`, as of 2026-11) plus the fork's own commits. `git log --oneline upstream/RC_2_0..prime` lists those commits, and each subject says what its commit changes. The fork's remote is `origin` (github.com/ludios/libtorrent); push to it only when the user asks.
 
-The user's machines get libtorrent from the user's nixpkgs fork in `~/code/system/nixpkgs`. Its `pkgs/by-name/li/libtorrent-rasterbar-2_0_x/package.nix` fetches one commit of `prime` from github.com/ludios/libtorrent (by `rev` and `hash`), and the user's qBittorrent fork (`~/code/system/qbittorrent`) is built against that package. A new commit on `prime` therefore changes nothing on the user's machines until it is pushed to `origin` and that `package.nix` names it. Keep `prime` on upstream's 2.0 series (`RC_2_0`): libtorrent 2.1 (upstream's `master`) removed `storage_params::mapped_files`, which this qBittorrent uses.
+The user's machines get libtorrent from the user's nixpkgs fork in `~/code/system/nixpkgs`. Its `pkgs/by-name/li/libtorrent-rasterbar-2_0_x/package.nix` fetches one commit of `prime` from github.com/ludios/libtorrent (by `rev` and `hash`), and the user's qBittorrent fork (`~/code/system/qbittorrent`) is built against that package. A new commit on `prime` therefore changes nothing on the user's machines until it is pushed to `origin` and that `package.nix` names it. Keep `prime` on upstream's 2.0 series (`RC_2_0`): libtorrent 2.1 (upstream's `RC_2_1` and `master`) removed `storage_params::mapped_files`, which this qBittorrent uses. Nix rebuilds each package that depends on this one whenever this one changes, so the fork's commits may change the ABI, which upstream's `.github/CONTRIBUTING.rst` forbids on upstream's `RC_*` branches.
 
-To move `prime` to a newer upstream commit, rebase it onto that commit of `upstream/RC_2_0` (the rules in "Using git safely" apply).
+To move `prime` to a newer upstream commit, `git fetch upstream`, then rebase `prime` onto that commit of `upstream/RC_2_0` (the rules in "Using git safely" apply).
 
-Keep each of the fork's changes small and in a commit of its own, so that `prime` rebases with few conflicts. Upstream has no style guide, so follow the style of the code around each change (tabs for indentation, `TORRENT_ASSERT`, a `TORRENT_TEST` in `test/` for each behavior change), and change as few of upstream's lines as you can: each changed line can conflict in a later rebase. For the same reason, don't add entries to `ChangeLog`, whose top changes with each upstream release.
+Keep each of the fork's changes small and in a commit of its own, so that `prime` rebases with few conflicts. Follow the pull request checklist in upstream's `.github/CONTRIBUTING.rst` (for example: a test in `test/`, or a simulation in `simulation/`, for each change of behavior; and each new file in `Jamfile`, `Makefile` and `CMakeLists.txt`), except for its `ChangeLog` entries: the top of `ChangeLog` changes with each upstream release, so an entry there would conflict in each rebase. Follow the style of the code around each change (tabs for indentation, `TORRENT_ASSERT`), and change as few of upstream's lines as you can: each changed line can conflict in a later rebase.
 
 # Before committing
 
-Build libtorrent and its tests with the debug checks of upstream's CI (assertions, full invariant checks, and libstdc++'s checked iterators), in the build environment of the system's nixpkgs package, and run the tests:
+Before committing a change to the code, build libtorrent and its tests with the debug checks of upstream's CI (assertions, full invariant checks, and libstdc++'s checked iterators), in the build environment of the system's nixpkgs package, and run the tests:
 
+	git submodule update --init --recursive
 	nix-shell '<nixpkgs>' -A libtorrent-rasterbar-2_0_x --run '
 		cmake -B cmake-build-debug -DCMAKE_BUILD_TYPE=Debug -Dbuild_tests=ON \
 			-Ddeveloper-options=ON -Dasserts=on -Dinvariant-checks=full -Ddebug-iterators=ON &&
 		cmake --build cmake-build-debug --parallel "$(nproc)" &&
 		cd cmake-build-debug && ctest -j8 --timeout 600'
 
-`<nixpkgs>` is the nixpkgs that the system was built from (`/var/nixpkgs`, through `NIX_PATH`), so nix finds every dependency already built. Don't use `nix-shell ~/code/system/nixpkgs` instead: that checkout is often ahead of the system.
+The `git submodule` command changes nothing where the submodules are checked out already, but a new clone (a `git clone --shared` copy, too) needs it: both builds use `deps/try_signal`, and the simulations use `simulation/libsimulator`.
 
-Then run upstream's simulations (`simulation/`: tests of swarms in a simulated network, which only b2 builds), as upstream's CI does:
+`<nixpkgs>` is the nixpkgs that the system was built from (`/var/nixpkgs`, through `NIX_PATH`), so nix normally finds every dependency in the store already. Don't use `nix-shell ~/code/system/nixpkgs` instead: that checkout is often ahead of the system. The CMake build type `Debug` passes no `-O` option, so nixpkgs' compiler wrapper adds `-O2` (for its `fortify` hardening). To debug a test in gdb, build in another `cmake-build-*` directory with `export NIX_HARDENING_ENABLE=` before the `cmake` commands, which turns off the hardening, and with it the `-O2`.
 
-	cd simulation
-	nix-shell -p boost boost-build --run 'b2 -j"$(nproc)" debug-iterators=on invariant-checks=full asserts=on picker-debugging=on'
+Then build the tests with deprecated functions off, as upstream's CI also does:
 
-b2 prints `**passed**` for each test that passes, and exits with status 0 only if every test passed.
+	nix-shell '<nixpkgs>' -A libtorrent-rasterbar-2_0_x --run '
+		cmake -B cmake-build-no-deprecated -DCMAKE_BUILD_TYPE=Debug -Dbuild_tests=ON -Ddeprecated-functions=OFF &&
+		cmake --build cmake-build-no-deprecated --parallel "$(nproc)"'
 
-On xclank in 2026-11, while other work was loading it, the CMake build took 3 minutes from an empty `cmake-build-debug/`, `ctest` took 1.5 minutes, and the simulations took 3 minutes from an empty `simulation/bin/`. Both builds put their output in directories that `.gitignore` lists (`cmake-build-debug/`, and b2's `bin/` directories).
+Then run upstream's simulations (`simulation/`: tests that run in a simulated network, in simulated time, which only b2 builds), as upstream's CI does:
 
-Each test binary in `cmake-build-debug/test/` lists its test cases with `-l`, and when given arguments, runs only the test cases that they name. Name each case exactly as `-l` prints it: the absolute path of the source file, then `.` and the case's name (for example, `./test_resume ~/code/system/libtorrent/test/test_resume.cpp.all_pieces_alerts`).
+	nix-shell -p boost boost-build --run '
+		cd simulation &&
+		NIX_HARDENING_ENABLE= b2 -j"$(nproc)" debug-iterators=on invariant-checks=full asserts=on picker-debugging=on'
 
-Don't add compiler warnings: upstream's CI builds with `warnings-as-errors=on`. As of 2026-11, the CMake build already prints 3 warnings (`-Warray-bounds` twice and `-Wstringop-overflow` once).
+Without `NIX_HARDENING_ENABLE=`, nixpkgs' compiler wrapper causes two warnings in each file that b2 compiles at `-O0` (`_FORTIFY_SOURCE requires compiling with optimization` and `"_LIBCPP_HARDENING_MODE" redefined`). b2 runs only the tests whose files changed since its last run, prints `**passed**` for each test that it runs and that passes, and exits with status 0 only if no test failed.
 
-The build and every test must pass, except for 2 of `ctest`'s 107 tests, which fail as of 2026-11 without any change of yours (every simulation passes):
+On xclank in 2026-11, while other work was loading it, the debug build took 3 minutes from an empty `cmake-build-debug/`, its `ctest` took 1.5 minutes, the build with deprecated functions off took 4 minutes from an empty `cmake-build-no-deprecated/`, and the simulations took 3 minutes when b2 had built nothing yet. All of these builds put their output in directories that `.gitignore` lists (`cmake-build-*/`, and b2's `bin/` directories).
 
-- `test_torrent_info`: its test case `sanitize_path_trailing_dots` still expects trailing dots to stay in file names on Linux; the fork's commit c30b682b2730 makes Linux remove them, as Windows does.
-- `test_upnp`: its UPnP search over multicast gets no answer on the user's machines, with and without the fork's commits.
+`ctest` counts each test binary (`cmake-build-debug/test/test_NAME`, built from `test/test_NAME.cpp`) as one test. Because of a bug in upstream's test runner, the output of a binary (which `ctest` saves) shows only the first of its failing test cases, unless the binary is run with `-n`. In `cmake-build-debug/test/` (the test binaries look for their data files relative to it), `./test_NAME -l` lists a binary's test cases, and `./test_NAME CASE...` runs only the cases named. Name each case exactly as `-l` prints it: the absolute path of the source file, then `.` and the case's name. For example:
+
+	cd cmake-build-debug/test
+	./test_resume -n "$(git rev-parse --show-toplevel)/test/test_resume.cpp.all_pieces_alerts"
+
+Don't add compiler warnings: upstream's CI builds with `warnings-as-errors=on`. As of 2026-11, the debug build from an empty `cmake-build-debug/` prints 3 warnings (`-Warray-bounds` twice and `-Wstringop-overflow` once), and the compiler prints none for the simulations (b2 itself warns about its configuration). An incremental build recompiles only the files that changed, and those that include them, so look for warnings in those files.
+
+The builds and every test must pass, except for these test cases of 2 of `ctest`'s 107 tests, which fail as of 2026-11 without any change of yours (they fail the same way with deprecated functions off, and every simulation passes). Run these 2 binaries with `-n`, and check that no other case of theirs fails:
+
+- `test_torrent_info`: 7 cases (`sanitize_path_trailing_dots`, `sanitize_path_trailing_spaces`, `sanitize_path`, `sanitize_path_force`, `sanitize_path_colon`, `parse_torrents` and `set_metadata_resolve_duplicate_filenames`; 20 failed checks in all) still expect a file name on Linux to keep its trailing dots and spaces, and characters such as `:` and `?`. The fork's commit "Forbid Windows-invalid characters in filenames even when running on Linux" makes Linux remove or replace them, as Windows does.
+- `test_upnp`: 3 cases (`upnp_wipconn`, `upnp_wanipconnection` and `upnp_wanipconnection2`) get no answer to their UPnP search over multicast on the user's machines, with and without the fork's commits.
 
 # Using git safely
 
