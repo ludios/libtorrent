@@ -2332,37 +2332,42 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 				inc_stats_counter(counters::num_have_pieces, num_pieces);
 				update_gauge();
 
-				// post the alerts that we_have() posts for each piece, in the same
-				// order, since clients may need them, e.g. to know which files are
-				// complete
+				// call the extensions and post the alerts that we_have() does for
+				// each piece, in the same order, since they may need them, e.g. to
+				// know which files are complete. (The extensions see every piece as
+				// had already, though.)
 				bool const post_pieces = m_ses.alerts().should_post<piece_finished_alert>();
 				bool const post_files = m_ses.alerts().should_post<file_completed_alert>();
-				if (post_pieces || post_files)
+				file_storage const& fs = m_torrent_file->files();
+				file_index_t file(0);
+				for (piece_index_t const i : fs.piece_range())
 				{
-					file_storage const& fs = m_torrent_file->files();
-					file_index_t file(0);
-					for (piece_index_t const i : fs.piece_range())
+#ifndef TORRENT_DISABLE_EXTENSIONS
+					for (auto& ext : m_extensions)
+						ext->on_piece_pass(i);
+#endif
+
+					if (post_pieces)
+						m_ses.alerts().emplace_alert<piece_finished_alert>(get_handle(), i);
+
+					if (!post_files) continue;
+
+					// a file is complete with the piece that has its last byte
+					std::int64_t const piece_end = std::int64_t(static_cast<int>(i))
+						* fs.piece_length() + fs.piece_size(i);
+					for (; file < fs.end_file()
+						&& fs.file_offset(file) + fs.file_size(file) <= piece_end; ++file)
 					{
-						if (post_pieces)
-							m_ses.alerts().emplace_alert<piece_finished_alert>(get_handle(), i);
+						if (fs.pad_file_at(file)) continue;
 
-						// a file is complete with the piece that has its last byte
-						std::int64_t const piece_end = std::int64_t(static_cast<int>(i))
-							* fs.piece_length() + fs.piece_size(i);
-						for (; file < fs.end_file()
-							&& fs.file_offset(file) + fs.file_size(file) <= piece_end; ++file)
-						{
-							if (!post_files || fs.pad_file_at(file)) continue;
+						// file_progress::update() never reaches an empty file at the
+						// start of a piece or at the end of the torrent
+						std::int64_t const offset = fs.file_offset(file);
+						if (fs.file_size(file) == 0
+							&& (offset % fs.piece_length() == 0 || offset == fs.total_size()))
+							continue;
 
-							// file_progress::update() never reaches an empty file at the
-							// start of a piece or at the end of the torrent
-							std::int64_t const offset = fs.file_offset(file);
-							if (fs.file_size(file) == 0
-								&& (offset % fs.piece_length() == 0 || offset == fs.total_size()))
-								continue;
-
-							m_ses.alerts().emplace_alert<file_completed_alert>(get_handle(), file);
-						}
+						m_ses.alerts().emplace_alert<file_completed_alert>(get_handle(), file);
 					}
 				}
 			}

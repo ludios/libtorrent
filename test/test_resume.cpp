@@ -47,6 +47,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/aux_/path.hpp"
 #include "libtorrent/file.hpp"
 #include "libtorrent/alert_types.hpp"
+#include "libtorrent/extensions.hpp"
 #include "setup_transfer.hpp"
 #include "make_torrent.hpp"
 #include "test_utils.hpp"
@@ -614,6 +615,15 @@ TORRENT_TEST(piece_slots_seed_suggest_cache)
 
 namespace {
 
+#ifndef TORRENT_DISABLE_EXTENSIONS
+struct piece_pass_plugin : torrent_plugin
+{
+	explicit piece_pass_plugin(std::vector<piece_index_t>& passed) : m_passed(passed) {}
+	void on_piece_pass(piece_index_t const p) override { m_passed.push_back(p); }
+	std::vector<piece_index_t>& m_passed;
+};
+#endif
+
 void test_all_pieces_alerts(settings_pack sett)
 {
 	// resume data with every piece adds them all at once. Make sure that
@@ -648,6 +658,13 @@ void test_all_pieces_alerts(settings_pack sett)
 	p.ti = ti;
 	p.save_path = save_path;
 	p.have_pieces.resize(ti->num_pieces(), true);
+
+	// extensions must hear about every piece too
+	std::vector<piece_index_t> passed;
+#ifndef TORRENT_DISABLE_EXTENSIONS
+	p.extensions.push_back([&passed](torrent_handle const&, client_data_t)
+		{ return std::make_shared<piece_pass_plugin>(passed); });
+#endif
 
 	sett.set_int(settings_pack::alert_mask, sett.get_int(settings_pack::alert_mask)
 		| alert_category::file_progress | alert_category::piece_progress);
@@ -687,6 +704,9 @@ void test_all_pieces_alerts(settings_pack sett)
 		, 6_file};
 	TEST_CHECK(pieces == expected_pieces);
 	TEST_CHECK(files == expected_files);
+#ifndef TORRENT_DISABLE_EXTENSIONS
+	TEST_CHECK(passed == expected_pieces);
+#endif
 
 	torrent_status const s = h.status();
 	TEST_EQUAL(s.is_seeding, true);
