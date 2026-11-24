@@ -150,7 +150,8 @@ bool is_downloading_state(int const st)
 	}
 }
 
-// whether the resume data has every piece, in which case init() makes no picker
+// whether the resume data has every piece, in which case init() may make no
+// picker
 bool resume_has_all_pieces(add_torrent_params const* p, int const num_pieces)
 {
 	return p && p->have_pieces.size() == num_pieces && p->have_pieces.all_set();
@@ -1969,17 +1970,23 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 			}
 		}
 
-		// a seed needs no picker, so don't make one here only to drop it once
-		// the resume data is checked. on_resume_data_checked() makes it if we
-		// don't have every piece after all (need_picker() does, with the file
-		// priorities, if anything needs it before then)
-		bool const resume_has_all = resume_has_all_pieces(m_add_torrent_params.get()
-			, m_torrent_file->num_pieces());
+		// when the resume data has every piece, we're probably a seed, which
+		// needs no picker: don't make one here only to drop it once the resume
+		// data is checked. on_resume_data_checked() makes it if we don't have
+		// every piece after all, and need_picker() does if anything needs it
+		// before then. Do make it for piece priorities (the loop below applies
+		// them over the file priorities only if the picker exists) and for
+		// peers connected already (to a magnet link): code for peers expects a
+		// picker unless we're a seed
+		bool const defer_picker = resume_has_all_pieces(m_add_torrent_params.get()
+				, m_torrent_file->num_pieces())
+			&& m_add_torrent_params->piece_priorities.empty()
+			&& m_connections.empty();
 
 		// in case file priorities were passed in via the add_torrent_params
 		// and also in the case of share mode, we need to update the priorities
 		// this has to be applied before piece priority
-		if (!m_file_priority.empty() && !resume_has_all)
+		if (!m_file_priority.empty() && !defer_picker)
 		{
 			// m_file_priority was loaded from the resume data, this doesn't
 			// alter any state that needs to be saved in the resume data
@@ -2013,7 +2020,7 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 			update_state_list();
 			update_want_tick();
 		}
-		else if (!resume_has_all)
+		else if (!defer_picker)
 		{
 			need_picker();
 
@@ -2278,8 +2285,9 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 
 		bool should_start_full_check = (status != status_t::no_error);
 
-		// init() makes no picker when the resume data has every piece (nor in
-		// seed mode, which the code below handles on its own)
+		// init() may have made no picker if the resume data has every piece (it
+		// makes none in seed mode either, which the code below handles on its
+		// own)
 		bool const resume_has_all = !m_seed_mode
 			&& resume_has_all_pieces(m_add_torrent_params.get(), m_torrent_file->num_pieces());
 
@@ -2338,7 +2346,7 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 
 				// do in bulk what adding each piece in the next branch does. There
 				// are no unfinished pieces to add, since we have every piece.
-				// init() made no picker, but something may have needed one since
+				// init() may have made no picker
 				if (has_picker())
 				{
 					m_picker->we_have_all();
@@ -2462,7 +2470,7 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 			update_state_list();
 		}
 
-		// if we don't have every piece after all, make the picker that init()
+		// if we don't have every piece after all, make the picker if init()
 		// didn't. Like init()'s, it has the pieces that are only padding
 		if (resume_has_all && !is_seed()) need_picker();
 

@@ -737,19 +737,21 @@ TORRENT_TEST(all_pieces_alerts_suggest_cache)
 
 TORRENT_TEST(all_pieces_alerts_piece_priorities)
 {
-	// a piece priority makes the torrent make its picker before it checks
-	// the resume data
+	// piece priorities make the torrent make its picker before it checks the
+	// resume data
 	test_all_pieces_alerts(settings(), {low_priority});
 }
 
 namespace {
 
-void test_all_pieces_missing(settings_pack const& sett)
+void test_all_pieces_missing(settings_pack const& sett
+	, std::vector<download_priority_t> const& piece_priorities = {}
+	, int const wanted_pieces = 2)
 {
-	// the torrent makes no picker while it checks resume data with every
+	// the torrent may make no picker while it checks resume data with every
 	// piece. When the files are missing, it must end up with the picker that
-	// it would have had: with the file priorities, and with the piece that is
-	// only padding
+	// it would have had: with the file priorities, the piece priorities over
+	// them, and the piece that is only padding
 	torrent_args args;
 	args.name("all_pieces_missing")
 		.file("32768")
@@ -769,6 +771,7 @@ void test_all_pieces_missing(settings_pack const& sett)
 	p.have_pieces.resize(ti->num_pieces(), true);
 	p.file_priorities = {default_priority, default_priority, dont_download
 		, default_priority};
+	p.piece_priorities = piece_priorities;
 
 	lt::session ses(sett);
 	torrent_handle h = ses.add_torrent(p);
@@ -780,7 +783,7 @@ void test_all_pieces_missing(settings_pack const& sett)
 	TEST_EQUAL(s.pieces.size(), ti->num_pieces());
 	if (s.pieces.size() == ti->num_pieces())
 		TEST_CHECK(s.pieces[1_piece]);
-	TEST_EQUAL(s.total_wanted, 2 * 32768);
+	TEST_EQUAL(s.total_wanted, wanted_pieces * 32768);
 	TEST_EQUAL(s.total_wanted_done, 0);
 }
 
@@ -798,6 +801,13 @@ TORRENT_TEST(all_pieces_missing_no_recheck)
 	settings_pack sett = settings();
 	sett.set_bool(settings_pack::no_recheck_incomplete_resume, true);
 	test_all_pieces_missing(sett);
+}
+
+TORRENT_TEST(all_pieces_missing_piece_priorities)
+{
+	// piece 2 is wanted after all, though its file isn't
+	test_all_pieces_missing(settings()
+		, std::vector<download_priority_t>(4, default_priority), 3);
 }
 
 // TODO: test what happens when loading a resume file with both piece priorities
