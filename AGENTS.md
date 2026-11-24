@@ -131,10 +131,7 @@ On xclank in 2026-11, while other work was loading it, the debug build took 3 mi
 
 Don't add compiler warnings: upstream's CI builds with `warnings-as-errors=on`. As of 2026-11, the debug build from an empty `cmake-build-debug/` prints 3 warnings (`-Warray-bounds` twice and `-Wstringop-overflow` once), and the compiler prints none for the simulations (b2 itself warns about its configuration). An incremental build recompiles only the files that changed, and those that include them, so look for warnings in those files.
 
-The builds and every test must pass, except for these test cases of 2 of `ctest`'s 107 tests, which fail as of 2026-11 without any change of yours (they fail the same way with deprecated functions off, and every simulation passes). Run these 2 binaries with `-n`, and check that no other case of theirs fails:
-
-- `test_torrent_info`: 7 cases (`sanitize_path_trailing_dots`, `sanitize_path_trailing_spaces`, `sanitize_path`, `sanitize_path_force`, `sanitize_path_colon`, `parse_torrents` and `set_metadata_resolve_duplicate_filenames`; 20 failed checks in all) still expect a file name on Linux to keep its trailing dots and spaces, and characters such as `:` and `?`. The fork's commit "Forbid Windows-invalid characters in filenames even when running on Linux" makes Linux remove or replace them, as Windows does.
-- `test_upnp`: 3 cases (`upnp_wipconn`, `upnp_wanipconnection` and `upnp_wanipconnection2`) get no answer to their UPnP search over multicast on the user's machines, with and without the fork's commits.
+The builds and every test must pass, except for 3 cases of `test_upnp` (1 of `ctest`'s 107 tests), which fail as of 2026-11 without any change of yours (the same way with deprecated functions off; every simulation passes): `upnp_wipconn`, `upnp_wanipconnection` and `upnp_wanipconnection2` get no answer to their UPnP search over multicast on the user's machines, with and without the fork's commits. Run `test_upnp` with `-n`, and check that no other case of it fails.
 
 # Using git safely
 
