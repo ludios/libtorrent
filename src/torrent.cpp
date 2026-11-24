@@ -1354,35 +1354,6 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 		}
 	}
 
-	// make the picker that a torrent starts with: with the pieces that are
-	// only padding as had
-	void torrent::init_picker()
-	{
-		need_picker();
-
-		TORRENT_ASSERT(block_size() > 0);
-
-		m_padding_bytes = 0;
-		std::vector<piece_index_t> have_pieces;
-
-		file_storage const& fs = m_torrent_file->files();
-		aux::apply_pad_files(fs, [&](piece_index_t const piece, int const bytes)
-		{
-			m_padding_bytes += bytes;
-			// need_picker() has set the pad bytes in the picker
-			if (bytes == fs.piece_size(piece))
-				have_pieces.push_back(piece);
-		});
-
-		for (auto i : have_pieces)
-		{
-			// we may have this piece already, if we picked it up from
-			// resume data.
-			if (m_picker->have_piece(i)) continue;
-			we_have(i);
-		}
-	}
-
 	void torrent::need_hash_picker()
 	{
 		if (m_hash_picker) return;
@@ -2044,7 +2015,30 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 		}
 		else if (!resume_has_all)
 		{
-			init_picker();
+			need_picker();
+
+			TORRENT_ASSERT(block_size() > 0);
+
+			m_padding_bytes = 0;
+			std::vector<piece_index_t> have_pieces;
+
+			aux::apply_pad_files(fs, [&](piece_index_t const piece, int const bytes)
+			{
+				m_padding_bytes += bytes;
+				// need_picker() has set the pad bytes in the picker
+				if (bytes == fs.piece_size(piece))
+					have_pieces.push_back(piece);
+			});
+
+			for (auto i : have_pieces)
+			{
+				// we may have this piece already, if we picked it up from
+				// resume data.
+				if (m_picker->have_piece(i)) continue;
+//				picker().piece_passed(i);
+//				TORRENT_ASSERT(picker().have_piece(i));
+				we_have(i);
+			}
 		}
 
 		set_state(torrent_status::checking_resume_data);
@@ -2469,8 +2463,8 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 		}
 
 		// if we don't have every piece after all, make the picker that init()
-		// didn't
-		if (resume_has_all && !is_seed()) init_picker();
+		// didn't. Like init()'s, it has the pieces that are only padding
+		if (resume_has_all && !is_seed()) need_picker();
 
 		if (should_start_full_check)
 		{
