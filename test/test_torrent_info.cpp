@@ -230,11 +230,7 @@ static test_torrent_t const test_torrents[] =
 	},
 	{ "invalid_name3.torrent", [](torrent_info const* ti) {
 			// windows does not allow trailing spaces in filenames
-#ifdef TORRENT_WINDOWS
 			TEST_EQUAL(ti->name(), "foobar");
-#else
-			TEST_EQUAL(ti->name(), "foobar ");
-#endif
 		}
 	},
 	{ "symlink1.torrent", [](torrent_info const* ti) {
@@ -632,36 +628,20 @@ TORRENT_TEST(sanitize_path_trailing_dots)
 	sanitize_append_path_element(path, "a");
 	sanitize_append_path_element(path, "abc...");
 	sanitize_append_path_element(path, "c");
-#ifdef TORRENT_WINDOWS
 	TEST_EQUAL(path, "a" SEPARATOR "abc" SEPARATOR "c");
-#else
-	TEST_EQUAL(path, "a" SEPARATOR "abc..." SEPARATOR "c");
-#endif
 
 	path.clear();
 	sanitize_append_path_element(path, "abc...");
-#ifdef TORRENT_WINDOWS
 	TEST_EQUAL(path, "abc");
-#else
-	TEST_EQUAL(path, "abc...");
-#endif
 
 	path.clear();
 	sanitize_append_path_element(path, "abc.");
-#ifdef TORRENT_WINDOWS
 	TEST_EQUAL(path, "abc");
-#else
-	TEST_EQUAL(path, "abc.");
-#endif
 
 
 	path.clear();
 	sanitize_append_path_element(path, "a. . .");
-#ifdef TORRENT_WINDOWS
 	TEST_EQUAL(path, "a");
-#else
-	TEST_EQUAL(path, "a. . .");
-#endif
 }
 
 TORRENT_TEST(sanitize_path_trailing_spaces)
@@ -671,27 +651,15 @@ TORRENT_TEST(sanitize_path_trailing_spaces)
 	sanitize_append_path_element(path, "a");
 	sanitize_append_path_element(path, "abc   ");
 	sanitize_append_path_element(path, "c");
-#ifdef TORRENT_WINDOWS
 	TEST_EQUAL(path, "a" SEPARATOR "abc" SEPARATOR "c");
-#else
-	TEST_EQUAL(path, "a" SEPARATOR "abc   " SEPARATOR "c");
-#endif
 
 	path.clear();
 	sanitize_append_path_element(path, "abc   ");
-#ifdef TORRENT_WINDOWS
 	TEST_EQUAL(path, "abc");
-#else
-	TEST_EQUAL(path, "abc   ");
-#endif
 
 	path.clear();
 	sanitize_append_path_element(path, "abc ");
-#ifdef TORRENT_WINDOWS
 	TEST_EQUAL(path, "abc");
-#else
-	TEST_EQUAL(path, "abc ");
-#endif
 }
 
 TORRENT_TEST(sanitize_path)
@@ -730,30 +698,18 @@ TORRENT_TEST(sanitize_path)
 
 	path.clear();
 	sanitize_append_path_element(path, "dev:");
-#ifdef TORRENT_WINDOWS
 	TEST_EQUAL(path, "dev_");
-#else
-	TEST_EQUAL(path, "dev:");
-#endif
 
 	path.clear();
 	sanitize_append_path_element(path, "c:");
 	sanitize_append_path_element(path, "b");
-#ifdef TORRENT_WINDOWS
 	TEST_EQUAL(path, "c_" SEPARATOR "b");
-#else
-	TEST_EQUAL(path, "c:" SEPARATOR "b");
-#endif
 
 	path.clear();
 	sanitize_append_path_element(path, "c:");
 	sanitize_append_path_element(path, ".");
 	sanitize_append_path_element(path, "c");
-#ifdef TORRENT_WINDOWS
 	TEST_EQUAL(path, "c_" SEPARATOR "c");
-#else
-	TEST_EQUAL(path, "c:" SEPARATOR "c");
-#endif
 
 	path.clear();
 	sanitize_append_path_element(path, "\\c");
@@ -783,11 +739,7 @@ TORRENT_TEST(sanitize_path)
 	path.clear();
 	sanitize_append_path_element(path, "abc");
 	sanitize_append_path_element(path, "   ");
-#ifdef TORRENT_WINDOWS
 	TEST_EQUAL(path, "abc");
-#else
-	TEST_EQUAL(path, "abc" SEPARATOR "   ");
-#endif
 
 	path.clear();
 	sanitize_append_path_element(path, "");
@@ -796,11 +748,7 @@ TORRENT_TEST(sanitize_path)
 
 	path.clear();
 	sanitize_append_path_element(path, "\b?filename=4");
-#ifdef TORRENT_WINDOWS
 	TEST_EQUAL(path, "__filename=4");
-#else
-	TEST_EQUAL(path, "_?filename=4");
-#endif
 
 	path.clear();
 	sanitize_append_path_element(path, "filename=4");
@@ -918,30 +866,18 @@ TORRENT_TEST(sanitize_path_force)
 
 	path.clear();
 	sanitize_append_path_element(path, "dev:", true);
-#ifdef TORRENT_WINDOWS
 	TEST_EQUAL(path, "dev_");
-#else
-	TEST_EQUAL(path, "dev:");
-#endif
 
 	path.clear();
 	sanitize_append_path_element(path, "c:", true);
 	sanitize_append_path_element(path, "b", true);
-#ifdef TORRENT_WINDOWS
 	TEST_EQUAL(path, "c_" SEPARATOR "b");
-#else
-	TEST_EQUAL(path, "c:" SEPARATOR "b");
-#endif
 
 	path.clear();
 	sanitize_append_path_element(path, "c:", true);
 	sanitize_append_path_element(path, ".", true);
 	sanitize_append_path_element(path, "c", true);
-#ifdef TORRENT_WINDOWS
 	TEST_EQUAL(path, "c_" SEPARATOR "_" SEPARATOR "c");
-#else
-	TEST_EQUAL(path, "c:" SEPARATOR "_" SEPARATOR "c");
-#endif
 
 	path.clear();
 	sanitize_append_path_element(path, "\\c", true);
@@ -971,11 +907,7 @@ TORRENT_TEST(sanitize_path_force)
 	path.clear();
 	sanitize_append_path_element(path, "abc", true);
 	sanitize_append_path_element(path, "   ", true);
-#ifdef TORRENT_WINDOWS
 	TEST_EQUAL(path, "abc" SEPARATOR "_");
-#else
-	TEST_EQUAL(path, "abc" SEPARATOR "   ");
-#endif
 
 	path.clear();
 	sanitize_append_path_element(path, "", true);
@@ -984,11 +916,7 @@ TORRENT_TEST(sanitize_path_force)
 
 	path.clear();
 	sanitize_append_path_element(path, "\b?filename=4", true);
-#ifdef TORRENT_WINDOWS
 	TEST_EQUAL(path, "__filename=4");
-#else
-	TEST_EQUAL(path, "_?filename=4");
-#endif
 
 	path.clear();
 	sanitize_append_path_element(path, "filename=4", true);
@@ -1087,11 +1015,7 @@ TORRENT_TEST(sanitize_path_colon)
 	using lt::aux::sanitize_append_path_element;
 	std::string path;
 	sanitize_append_path_element(path, "foo:bar");
-#ifdef TORRENT_WINDOWS
 	TEST_EQUAL(path, "foo_bar");
-#else
-	TEST_EQUAL(path, "foo:bar");
-#endif
 }
 
 TORRENT_TEST(verify_encoding)
