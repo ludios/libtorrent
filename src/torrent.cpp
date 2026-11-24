@@ -150,6 +150,12 @@ bool is_downloading_state(int const st)
 	}
 }
 
+// whether the resume data has every piece, in which case init() makes no picker
+bool resume_has_all_pieces(add_torrent_params const* p, int const num_pieces)
+{
+	return p && p->have_pieces.size() == num_pieces && p->have_pieces.all_set();
+}
+
 // convert file priorities into piece priorities
 aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 	file_storage const& fs
@@ -1348,6 +1354,35 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 		}
 	}
 
+	// make the picker that a torrent starts with: with the pieces that are
+	// only padding as had
+	void torrent::init_picker()
+	{
+		need_picker();
+
+		TORRENT_ASSERT(block_size() > 0);
+
+		m_padding_bytes = 0;
+		std::vector<piece_index_t> have_pieces;
+
+		file_storage const& fs = m_torrent_file->files();
+		aux::apply_pad_files(fs, [&](piece_index_t const piece, int const bytes)
+		{
+			m_padding_bytes += bytes;
+			// need_picker() has set the pad bytes in the picker
+			if (bytes == fs.piece_size(piece))
+				have_pieces.push_back(piece);
+		});
+
+		for (auto i : have_pieces)
+		{
+			// we may have this piece already, if we picked it up from
+			// resume data.
+			if (m_picker->have_piece(i)) continue;
+			we_have(i);
+		}
+	}
+
 	void torrent::need_hash_picker()
 	{
 		if (m_hash_picker) return;
@@ -1963,10 +1998,17 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 			}
 		}
 
+		// a seed needs no picker, so don't make one here only to drop it once
+		// the resume data is checked. on_resume_data_checked() makes it if we
+		// don't have every piece after all (need_picker() does, with the file
+		// priorities, if anything needs it before then)
+		bool const resume_has_all = resume_has_all_pieces(m_add_torrent_params.get()
+			, m_torrent_file->num_pieces());
+
 		// in case file priorities were passed in via the add_torrent_params
 		// and also in the case of share mode, we need to update the priorities
 		// this has to be applied before piece priority
-		if (!m_file_priority.empty())
+		if (!m_file_priority.empty() && !resume_has_all)
 		{
 			// m_file_priority was loaded from the resume data, this doesn't
 			// alter any state that needs to be saved in the resume data
@@ -2000,32 +2042,9 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 			update_state_list();
 			update_want_tick();
 		}
-		else
+		else if (!resume_has_all)
 		{
-			need_picker();
-
-			TORRENT_ASSERT(block_size() > 0);
-
-			m_padding_bytes = 0;
-			std::vector<piece_index_t> have_pieces;
-
-			aux::apply_pad_files(fs, [&](piece_index_t const piece, int const bytes)
-			{
-				m_padding_bytes += bytes;
-				// need_picker() has set the pad bytes in the picker
-				if (bytes == fs.piece_size(piece))
-					have_pieces.push_back(piece);
-			});
-
-			for (auto i : have_pieces)
-			{
-				// we may have this piece already, if we picked it up from
-				// resume data.
-				if (m_picker->have_piece(i)) continue;
-//				picker().piece_passed(i);
-//				TORRENT_ASSERT(picker().have_piece(i));
-				we_have(i);
-			}
+			init_picker();
 		}
 
 		set_state(torrent_status::checking_resume_data);
@@ -2265,6 +2284,11 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 
 		bool should_start_full_check = (status != status_t::no_error);
 
+		// init() makes no picker when the resume data has every piece (nor in
+		// seed mode, which the code below handles on its own)
+		bool const resume_has_all = !m_seed_mode
+			&& resume_has_all_pieces(m_add_torrent_params.get(), m_torrent_file->num_pieces());
+
 		// if we got a partial pieces bitfield, it means we were in the middle of
 		// checking this torrent. pick it up where we left off
 		if (status == status_t::no_error
@@ -2289,9 +2313,7 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 			// when the resume data has every piece, and no peer or piece deadline
 			// needs to hear about each of them, add them all at once (below)
 			// instead of one at a time, which takes long with many pieces
-			bool const have_all_pieces = !error && m_add_torrent_params
-				&& m_add_torrent_params->have_pieces.size() == m_torrent_file->num_pieces()
-				&& m_add_torrent_params->have_pieces.all_set()
+			bool const have_all_pieces = !error && resume_has_all
 				&& m_connections.empty()
 #ifndef TORRENT_DISABLE_STREAMING
 				&& m_time_critical_pieces.empty()
@@ -2321,11 +2343,15 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 				// --- ALL PIECES ---
 
 				// do in bulk what adding each piece in the next branch does. There
-				// are no unfinished pieces to add, since we have every piece
-				need_picker();
-				m_picker->we_have_all();
-				m_file_progress.clear();
-				m_file_progress.init(*m_picker, m_torrent_file->files());
+				// are no unfinished pieces to add, since we have every piece.
+				// init() made no picker, but something may have needed one since
+				if (has_picker())
+				{
+					m_picker->we_have_all();
+					m_file_progress.clear();
+					m_file_progress.init(*m_picker, m_torrent_file->files());
+				}
+				set_have_all(true);
 
 				int const num_pieces = m_torrent_file->num_pieces();
 				inc_stats_counter(counters::num_piece_passed, num_pieces);
@@ -2441,6 +2467,10 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 			update_gauge();
 			update_state_list();
 		}
+
+		// if we don't have every piece after all, make the picker that init()
+		// didn't
+		if (resume_has_all && !is_seed()) init_picker();
 
 		if (should_start_full_check)
 		{

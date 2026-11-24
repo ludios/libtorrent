@@ -1120,6 +1120,7 @@ namespace libtorrent {
 			return *m_picker;
 		}
 		void need_picker();
+		void init_picker();
 		bool has_picker() const
 		{
 			return m_picker.get() != nullptr;

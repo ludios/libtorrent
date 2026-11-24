@@ -624,7 +624,8 @@ struct piece_pass_plugin : torrent_plugin
 };
 #endif
 
-void test_all_pieces_alerts(settings_pack sett)
+void test_all_pieces_alerts(settings_pack sett
+	, std::vector<download_priority_t> const& piece_priorities = {})
 {
 	// resume data with every piece adds them all at once. Make sure that
 	// posts the same alerts as adding them one at a time: for every piece,
@@ -658,6 +659,7 @@ void test_all_pieces_alerts(settings_pack sett)
 	p.ti = ti;
 	p.save_path = save_path;
 	p.have_pieces.resize(ti->num_pieces(), true);
+	p.piece_priorities = piece_priorities;
 
 	// extensions must hear about every piece too
 	std::vector<piece_index_t> passed;
@@ -731,6 +733,71 @@ TORRENT_TEST(all_pieces_alerts_suggest_cache)
 	settings_pack sett = settings();
 	sett.set_int(settings_pack::suggest_mode, settings_pack::suggest_read_cache);
 	test_all_pieces_alerts(sett);
+}
+
+TORRENT_TEST(all_pieces_alerts_piece_priorities)
+{
+	// a piece priority makes the torrent make its picker before it checks
+	// the resume data
+	test_all_pieces_alerts(settings(), {low_priority});
+}
+
+namespace {
+
+void test_all_pieces_missing(settings_pack const& sett)
+{
+	// the torrent makes no picker while it checks resume data with every
+	// piece. When the files are missing, it must end up with the picker that
+	// it would have had: with the file priorities, and with the piece that is
+	// only padding
+	torrent_args args;
+	args.name("all_pieces_missing")
+		.file("32768")
+		.file("32768,padfile")
+		.file("32768")
+		.file("32768");
+	std::shared_ptr<torrent_info> ti = make_test_torrent(args);
+	TEST_EQUAL(ti->num_pieces(), 4);
+
+	std::string const save_path = "all_pieces_missing_test";
+	error_code ec;
+	remove_all(save_path, ec);
+
+	add_torrent_params p;
+	p.ti = ti;
+	p.save_path = save_path;
+	p.have_pieces.resize(ti->num_pieces(), true);
+	p.file_priorities = {default_priority, default_priority, dont_download
+		, default_priority};
+
+	lt::session ses(sett);
+	torrent_handle h = ses.add_torrent(p);
+	TEST_CHECK(wait_for_alert(ses, torrent_checked_alert::alert_type, "all_pieces_missing"));
+
+	torrent_status const s = h.status();
+	TEST_EQUAL(s.is_seeding, false);
+	TEST_EQUAL(s.num_pieces, 1);
+	TEST_EQUAL(s.pieces.size(), ti->num_pieces());
+	if (s.pieces.size() == ti->num_pieces())
+		TEST_CHECK(s.pieces[1_piece]);
+	TEST_EQUAL(s.total_wanted, 2 * 32768);
+	TEST_EQUAL(s.total_wanted_done, 0);
+}
+
+} // anonymous namespace
+
+TORRENT_TEST(all_pieces_missing)
+{
+	// the files are checked
+	test_all_pieces_missing(settings());
+}
+
+TORRENT_TEST(all_pieces_missing_no_recheck)
+{
+	// the resume data is rejected, and the files aren't checked
+	settings_pack sett = settings();
+	sett.set_bool(settings_pack::no_recheck_incomplete_resume, true);
+	test_all_pieces_missing(sett);
 }
 
 // TODO: test what happens when loading a resume file with both piece priorities
