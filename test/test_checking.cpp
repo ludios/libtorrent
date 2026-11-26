@@ -49,9 +49,11 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/aux_/path.hpp"
 #include "libtorrent/aux_/open_mode.hpp"
 #include "libtorrent/aux_/directory.hpp"
+#include "libtorrent/mmap_disk_io.hpp"
 
 #include <fstream>
 #include <set>
+#include <string>
 
 namespace {
 
@@ -679,8 +681,11 @@ TORRENT_TEST(inconsistent_hybrid_hashes_outstanding_hash_jobs)
 	remove_all(test_dir, ec);
 }
 
-#ifdef TORRENT_LINUX
-// Linux names a thread only if the name has at most 15 characters
+#if defined TORRENT_LINUX && TORRENT_HAVE_MMAP
+// Linux names a thread only if the name has at most 15 bytes. The session
+// uses mmap_disk_io, whose disk and hashing threads are named, rather than
+// posix_disk_io, which has none, and which is the default where pointers are
+// 32 bits
 TORRENT_TEST(thread_names)
 {
 	using namespace lt;
@@ -701,28 +706,35 @@ TORRENT_TEST(thread_names)
 	auto ti = std::make_shared<torrent_info>(buf, ec, from_span);
 	TEST_CHECK(ti->is_valid());
 
-	// the files are there, so the torrent's check hashes them, on a hashing
-	// thread
+	// the files are there, so checking the torrent hashes them, on a thread
+	// of the hashing pool
 	add_torrent_params p;
 	p.save_path = ".";
 	p.ti = ti;
 	settings_pack pack = settings();
 	pack.set_int(settings_pack::hashing_threads, 1);
-	session ses(pack);
+	session_params params(pack);
+	params.disk_io_constructor = mmap_disk_io_constructor;
+	session ses(std::move(params));
 	ses.add_torrent(p, ec);
 	TEST_CHECK(!ec);
 	TEST_CHECK(wait_for_alert(ses, torrent_checked_alert::alert_type
 		, "check", pop_alerts::pop_all, seconds(30)));
 
-	std::multiset<std::string> names;
+	// a thread that is starting has the name of the thread that started it,
+	// and the threads of earlier sessions may not have exited yet, so this
+	// doesn't count the threads of each name
+	std::set<std::string> names;
 	for (aux::directory i("/proc/self/task", ec); !i.done(); i.next(ec))
 	{
+		if (i.file()[0] == '.') continue;
 		std::ifstream comm("/proc/self/task/" + i.file() + "/comm");
 		std::string name;
 		if (std::getline(comm, name)) names.insert(name);
 	}
+	TEST_CHECK(!ec);
 	TEST_EQUAL(names.count("lt-net-thread"), 1);
-	TEST_CHECK(names.count("lt-disk-thread") > 0);
+	TEST_EQUAL(names.count("lt-disk-thread"), 1);
 	TEST_EQUAL(names.count("lt-hash-thread"), 1);
 
 	remove_all(test_dir, ec);
