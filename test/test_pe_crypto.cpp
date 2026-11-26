@@ -37,6 +37,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <iostream>
 
 #include "libtorrent/hasher.hpp"
+#include "libtorrent/hex.hpp"
 #include "libtorrent/pe_crypto.hpp"
 #include "libtorrent/random.hpp"
 #include "libtorrent/span.hpp"
@@ -190,6 +191,54 @@ TORRENT_TEST(rc4)
 	rc42.set_incoming_key(test1_key);
 	rc42.set_outgoing_key(test2_key);
 	test_enc_handler(rc41, rc42);
+}
+
+// the keystream of the key 0x0102030405, from RFC 6229, at the offsets that
+// follow the 1024 bytes that rc4_handler discards
+TORRENT_TEST(rc4_keystream)
+{
+	using namespace lt;
+
+	struct { int offset; char const* hex; } const vectors[] = {
+		{1024, "30abbcc7c20b01609f23ee2d5f6bb7df"},
+		{1520, "3294f744d8f9790507e70f62e5bbceea"},
+		{1536, "d8729db41882259bee4f825325f5a130"},
+		{2032, "1eb14a0c13b3bf47fa2a0ba93ad45b8b"},
+		{2048, "cc582f8ba9f265e2b1be9112e975d2d7"},
+		{3056, "f2e30f9bd102ecbf75aaade9bc35c43c"},
+		{3072, "ec0e11c479dc329dc8da7968fe965681"},
+		{4080, "068326a2118416d21f9d04b2cd1ca050"},
+		{4096, "ff25b58995996707e51fbdf08b34d875"},
+	};
+
+	char const key[] = {1, 2, 3, 4, 5};
+	rc4_handler rc4;
+	rc4.set_incoming_key(key);
+	rc4.set_outgoing_key(key);
+
+	// XOR zeros with the keystream, in pieces of 1 to 23 bytes, so that the
+	// pieces start and end at each offset within 8 bytes. encrypt() gets
+	// each piece in a call of its own, decrypt() all of them in one call
+	int const size = 4096 + 16 - 1024;
+	std::vector<char> encrypted(std::size_t(size), 0);
+	std::vector<char> decrypted(std::size_t(size), 0);
+	std::vector<span<char>> pieces;
+	int pos = 0;
+	for (int len = 1; pos < size; len = len % 23 + 1)
+	{
+		int const n = std::min(len, size - pos);
+		span<char> piece(encrypted.data() + pos, n);
+		rc4.encrypt(piece);
+		pieces.emplace_back(decrypted.data() + pos, n);
+		pos += n;
+	}
+	rc4.decrypt(pieces);
+
+	for (auto const& v : vectors)
+	{
+		TEST_EQUAL(aux::to_hex({encrypted.data() + v.offset - 1024, 16}), v.hex);
+		TEST_EQUAL(aux::to_hex({decrypted.data() + v.offset - 1024, 16}), v.hex);
+	}
 }
 
 // the whole send buffer is passed to encrypt(), which may be a lot more than

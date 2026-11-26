@@ -37,6 +37,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #if !defined TORRENT_DISABLE_ENCRYPTION
 
 #include <cstdint>
+#include <cstring>
 #include <algorithm>
 #include <random>
 
@@ -44,6 +45,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include <boost/multiprecision/integer.hpp>
 #include <boost/multiprecision/cpp_int.hpp>
+#include <boost/predef/other/endian.h>
 
 #include "libtorrent/aux_/disable_warnings_pop.hpp"
 
@@ -397,23 +399,61 @@ void rc4_init(const unsigned char* in, std::size_t len, rc4 *state)
 
 std::size_t rc4_encrypt(unsigned char *out, std::size_t outlen, rc4 *state)
 {
-	std::uint8_t x, y, *s, tmp;
-	std::size_t n;
-
 	TORRENT_ASSERT(out != nullptr);
 	TORRENT_ASSERT(state != nullptr);
 
-	n = outlen;
-	x = state->x & 0xff;
-	y = state->y & 0xff;
-	s = state->buf.data();
-	while (outlen--) {
-		x = (x + 1) & 255;
-		y = (y + s[x]) & 255;
-		tmp = s[x]; s[x] = s[y]; s[y] = tmp;
-		tmp = (s[x] + s[y]) & 255;
-		*out++ ^= s[tmp];
+	std::size_t const n = outlen;
+	auto x = std::uint8_t(state->x);
+	auto y = std::uint8_t(state->y);
+	std::uint8_t* const s = state->buf.data();
+
+	// the next byte of the keystream
+	auto next = [&]
+	{
+		x = std::uint8_t(x + 1);
+		std::uint8_t const a = s[x];
+		y = std::uint8_t(y + a);
+		std::uint8_t const b = s[y];
+		s[y] = a;
+		s[x] = b;
+		return s[std::uint8_t(a + b)];
+	};
+
+	// the next byte of the keystream, shifted to the position in a word that
+	// the i:th byte in memory has
+	auto next_at = [&](int const i)
+	{
+#if BOOST_ENDIAN_BIG_BYTE
+		return std::uint64_t(next()) << (56 - 8 * i);
+#elif BOOST_ENDIAN_LITTLE_BYTE
+		return std::uint64_t(next()) << (8 * i);
+#else
+#error "unknown endian"
+#endif
+	};
+
+	// XOR 8 bytes at a time, with one read and one write of out. On Zen 5,
+	// this was 1.3 (clang) to 1.65 (GCC) times as fast as XORing each byte
+	// of out by itself. The calls of next_at() are separate statements, to
+	// generate the keystream in order
+	for (; outlen >= 8; outlen -= 8, out += 8)
+	{
+		std::uint64_t k = next_at(0);
+		k |= next_at(1);
+		k |= next_at(2);
+		k |= next_at(3);
+		k |= next_at(4);
+		k |= next_at(5);
+		k |= next_at(6);
+		k |= next_at(7);
+		std::uint64_t w;
+		std::memcpy(&w, out, 8);
+		w ^= k;
+		std::memcpy(out, &w, 8);
 	}
+	for (; outlen > 0; --outlen, ++out)
+		*out ^= next();
+
 	state->x = x;
 	state->y = y;
 	return n;
