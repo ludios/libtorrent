@@ -36,6 +36,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "setup_transfer.hpp" // for addr()
 #include "utils.hpp" // for print_alerts
 #include "create_torrent.hpp"
+#include "fake_peer.hpp" // for udp_server
 #include "simulator/simulator.hpp"
 #include "simulator/http_server.hpp"
 #include "simulator/utils.hpp"
@@ -49,6 +50,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/aux_/escape_string.hpp"
 #include "libtorrent/string_util.hpp" // for string_ends_with
 #include "libtorrent/flags.hpp"
+#include "libtorrent/io.hpp" // for read_uint32
 
 #include <boost/optional.hpp>
 #include <iostream>
@@ -2864,3 +2866,77 @@ TORRENT_TEST(peer_hostname_resolved_with_default_settings)
 	test_peer_hostname_resolve(no_proxy_configured);
 }
 
+namespace {
+
+std::vector<char> udp_tracker_reply(std::uint32_t const action
+	, std::uint32_t const transaction_id, std::string const& payload)
+{
+	std::vector<char> ret(8 + payload.size());
+	char* ptr = ret.data();
+	lt::aux::write_uint32(action, ptr);
+	lt::aux::write_uint32(transaction_id, ptr);
+	std::copy(payload.begin(), payload.end(), ptr);
+	return ret;
+}
+
+// what a UDP tracker answers to the packet "in": a connection ID to a
+// connect request, and what announce() returns to any other request
+template <typename Announce>
+std::vector<char> udp_tracker(char const* in, int const size, Announce const& announce)
+{
+	if (size < 16) return {};
+	char const* ptr = in + 8;
+	std::uint32_t const action = lt::aux::read_uint32(ptr);
+	std::uint32_t const transaction_id = lt::aux::read_uint32(ptr);
+	if (action == 0) return udp_tracker_reply(0, transaction_id, std::string(8, 'c'));
+	return announce(transaction_id);
+}
+
+} // anonymous namespace
+
+// the message of a UDP tracker's error response is passed on in the alert
+TORRENT_TEST(udp_tracker_error_message)
+{
+	sim_config network_cfg;
+	sim::simulation sim{network_cfg};
+
+	udp_server tracker(sim, "123.0.0.2", 8080, [](char const* in, int const size)
+	{
+		return udp_tracker(in, size, [](std::uint32_t const transaction_id)
+			{ return udp_tracker_reply(3, transaction_id, "torrent not registered"); });
+	});
+
+	lt::session_proxy zombie;
+
+	asio::io_context ios(sim, make_address_v4("123.0.0.3"));
+	lt::settings_pack sett = settings();
+	std::unique_ptr<lt::session> ses(new lt::session(sett, ios));
+
+	int num_errors = 0;
+	print_alerts(*ses, [&](lt::session&, lt::alert const* a) {
+		if (auto const* te = alert_cast<lt::tracker_error_alert>(a))
+		{
+			++num_errors;
+			TEST_EQUAL(te->error, error_code(lt::errors::tracker_failure));
+			TEST_EQUAL(std::string(te->error_message()), "torrent not registered");
+		}
+	});
+
+	lt::add_torrent_params p;
+	p.name = "test-torrent";
+	p.save_path = ".";
+	p.info_hashes.v1.assign("abababababababababab");
+	p.trackers.push_back("udp://tracker.com:8080/announce");
+	ses->async_add_torrent(p);
+
+	sim::timer t(sim, lt::seconds(10), [&](boost::system::error_code const&)
+	{
+		zombie = ses->abort();
+		ses.reset();
+		tracker.close();
+	});
+
+	sim.run();
+
+	TEST_CHECK(num_errors > 0);
+}

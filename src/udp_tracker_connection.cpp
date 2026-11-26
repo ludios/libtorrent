@@ -399,8 +399,10 @@ namespace libtorrent {
 
 		if (action == action_t::error)
 		{
+			// the message follows the 8 byte header (the action and the
+			// transaction ID)
 			fail(error_code(errors::tracker_failure), operation_t::bittorrent
-				, std::string(buf.data(), static_cast<std::size_t>(buf.size())).c_str());
+				, std::string(buf.data() + 8, static_cast<std::size_t>(buf.size() - 8)).c_str());
 			return true;
 		}
 
