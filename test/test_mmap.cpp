@@ -114,6 +114,61 @@ TORRENT_TEST(mmap_write)
 	}
 }
 
+#if defined TORRENT_LINUX && TORRENT_USE_MADVISE
+
+namespace {
+
+// the VmFlags of the mapping that contains addr, from /proc/self/smaps
+std::string vm_flags(void const* const addr)
+{
+	auto const a = reinterpret_cast<std::uintptr_t>(addr);
+	std::ifstream smaps("/proc/self/smaps");
+	std::string line;
+	bool found = false;
+	while (std::getline(smaps, line))
+	{
+		unsigned long long start = 0;
+		unsigned long long end = 0;
+		// the first line of each mapping starts with its address range
+		if (std::sscanf(line.c_str(), "%llx-%llx ", &start, &end) == 2)
+			found = a >= start && a < end;
+		else if (found && line.compare(0, 8, "VmFlags:") == 0)
+			return line.substr(8) + " ";
+	}
+	return {};
+}
+
+}
+
+// each advice given to madvise() is a value of its own. ORed together, they
+// are an invalid advice, and none of them applies
+TORRENT_TEST(mmap_advice)
+{
+	std::vector<char> buf = filled_buffer(1024 * 1024);
+
+	{
+		std::ofstream file("test_file3", std::ios::binary);
+		file.write(buf.data(), std::streamsize(buf.size()));
+	}
+
+	for (auto const mode : {open_mode::read_only, open_mode::read_only | open_mode::sequential_access})
+	{
+		auto m = std::make_shared<file_mapping>(aux::file_handle("test_file3"
+			, std::int64_t(buf.size()), mode), mode, buf.size());
+
+		std::string const flags = vm_flags(m->range().data());
+		std::printf("VmFlags:%s\n", flags.c_str());
+		// "dd" is "do not include area into core dump", "dc" is "do not copy
+		// area on fork" and "sr" is "sequential read advise provided"
+		TEST_CHECK(flags.find(" dd ") != std::string::npos);
+		TEST_CHECK(flags.find(" dc ") != std::string::npos);
+		TEST_EQUAL(flags.find(" sr ") != std::string::npos
+			, bool(mode & open_mode::sequential_access));
+	}
+}
+
+#endif
+
 #else
 
 TORRENT_TEST(dummy) {}

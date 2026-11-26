@@ -187,24 +187,25 @@ file_mapping::file_mapping(file_handle file, open_mode_t const mode, std::int64_
 #if TORRENT_USE_MADVISE
 	if (m_mapping != nullptr && m_mapping != map_failed)
 	{
-		int const advise = ((mode & open_mode::sequential_access) ? MADV_SEQUENTIAL : 0)
+		// each advice is a value of its own, not a flag to combine with the
+		// others, so each one takes its own call.
+		// ignore errors here, since this is best-effort
+		auto const size = static_cast<std::size_t>(m_size);
+		if (mode & open_mode::sequential_access)
+			::madvise(m_mapping, size, MADV_SEQUENTIAL);
 #ifdef MADV_DONTDUMP
 		// on versions of linux that support it, ask for this region to not be
 		// included in coredumps (mostly to make the coredumps more manageable
 		// with large disk caches)
-		// ignore errors here, since this is best-effort
-			| MADV_DONTDUMP
+		::madvise(m_mapping, size, MADV_DONTDUMP);
 #endif
 #ifdef MADV_DONTFORK
-			| MADV_DONTFORK
+		::madvise(m_mapping, size, MADV_DONTFORK);
 #endif
 #ifdef MADV_NOCORE
 		// This is the BSD counterpart to exclude a range from core dumps
-			| MADV_NOCORE
+		::madvise(m_mapping, size, MADV_NOCORE);
 #endif
-		;
-		if (advise != 0)
-			::madvise(m_mapping, static_cast<std::size_t>(m_size), advise);
 	}
 #endif
 }
