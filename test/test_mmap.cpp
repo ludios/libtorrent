@@ -158,12 +158,16 @@ TORRENT_TEST(mmap_advice)
 
 		std::string const flags = vm_flags(m->range().data());
 		std::printf("VmFlags:%s\n", flags.c_str());
+		// not every kernel, or sandbox, has the flags in /proc/self/smaps
+		if (flags.empty()) return;
+
 		// "dd" is "do not include area into core dump", "dc" is "do not copy
 		// area on fork" and "sr" is "sequential read advise provided"
 		TEST_CHECK(flags.find(" dd ") != std::string::npos);
 		TEST_CHECK(flags.find(" dc ") != std::string::npos);
-		TEST_EQUAL(flags.find(" sr ") != std::string::npos
-			, bool(mode & open_mode::sequential_access));
+		// the mapping may be used for other reads later, so it isn't advised
+		// to be read sequentially
+		TEST_CHECK(flags.find(" sr ") == std::string::npos);
 	}
 }
 
