@@ -1610,7 +1610,9 @@ TORRENT_EXPORT std::unique_ptr<disk_interface> mmap_disk_io_constructor(
 						if (st)
 						{
 							l2.unlock();
-							st->tick();
+							// do_tick() clears the storage's need-tick flag, so
+							// that its next write queues it here again
+							st->do_tick();
 							l2.lock();
 						}
 					}

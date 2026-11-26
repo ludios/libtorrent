@@ -126,12 +126,8 @@ namespace aux {
 		// file_storage, otherwise returns the original file_storage object.
 		file_storage const& files() const { return m_mapped_files ? *m_mapped_files : m_files; }
 
-		bool set_need_tick()
-		{
-			bool const prev = m_need_tick;
-			m_need_tick = true;
-			return prev;
-		}
+		// returns whether a tick was already pending
+		bool set_need_tick() { return m_need_tick.exchange(true); }
 
 		void do_tick()
 		{
@@ -146,7 +142,7 @@ namespace aux {
 
 	private:
 
-		bool m_need_tick = false;
+		std::atomic<bool> m_need_tick{false};
 		bool m_use_mmap_writes = false;
 
 		file_storage const& m_files;
