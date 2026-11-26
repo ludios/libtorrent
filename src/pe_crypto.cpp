@@ -37,7 +37,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #if !defined TORRENT_DISABLE_ENCRYPTION
 
 #include <cstdint>
-#include <cstring>
 #include <algorithm>
 #include <random>
 
@@ -419,8 +418,8 @@ std::size_t rc4_encrypt(unsigned char *out, std::size_t outlen, rc4 *state)
 		return s[std::uint8_t(a + b)];
 	};
 
-	// the next byte of the keystream, shifted to the position in a word that
-	// the i:th byte in memory has
+	// the next byte of the keystream, shifted to where byte i (0 to 7) of 8
+	// bytes in memory goes in a std::uint64_t
 	auto next_at = [&](int const i)
 	{
 #if BOOST_ENDIAN_BIG_BYTE
@@ -432,10 +431,10 @@ std::size_t rc4_encrypt(unsigned char *out, std::size_t outlen, rc4 *state)
 #endif
 	};
 
-	// XOR 8 bytes at a time, with one read and one write of out. On Zen 5,
-	// this was 1.3 (clang) to 1.65 (GCC) times as fast as XORing each byte
-	// of out by itself. The calls of next_at() are separate statements, to
-	// generate the keystream in order
+	// XOR 8 bytes at a time, with one read and one write of out (which
+	// needn't be aligned), rather than reading and writing each byte of out.
+	// The calls of next_at() are separate statements, to generate the
+	// keystream in order
 	for (; outlen >= 8; outlen -= 8, out += 8)
 	{
 		std::uint64_t k = next_at(0);

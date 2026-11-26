@@ -193,13 +193,20 @@ TORRENT_TEST(rc4)
 	test_enc_handler(rc41, rc42);
 }
 
-// the keystream of the key 0x0102030405, from RFC 6229, at the offsets that
-// follow the 1024 bytes that rc4_handler discards
+// RC4's keystream from RFC 6229, at the offsets that follow the 1024 bytes
+// that rc4_handler discards. RC4 repeats its key in the key schedule, so the
+// RFC's key 0x0102030405 4 times over is a key of the 20 bytes that
+// rc4_handler takes, with the same keystream
 TORRENT_TEST(rc4_keystream)
 {
 	using namespace lt;
 
-	struct { int offset; char const* hex; } const vectors[] = {
+	struct test_vector
+	{
+		int offset;
+		char const* hex;
+	};
+	test_vector const vectors[] = {
 		{1024, "30abbcc7c20b01609f23ee2d5f6bb7df"},
 		{1520, "3294f744d8f9790507e70f62e5bbceea"},
 		{1536, "d8729db41882259bee4f825325f5a130"},
@@ -211,34 +218,30 @@ TORRENT_TEST(rc4_keystream)
 		{4096, "ff25b58995996707e51fbdf08b34d875"},
 	};
 
-	char const key[] = {1, 2, 3, 4, 5};
+	char const key[] = {1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5};
 	rc4_handler rc4;
-	rc4.set_incoming_key(key);
-	rc4.set_outgoing_key(key);
+	rc4.set_incoming_key({key, sizeof(key)});
+	rc4.set_outgoing_key({key, sizeof(key)});
 
-	// XOR zeros with the keystream, in pieces of 1 to 23 bytes, so that the
-	// pieces start and end at each offset within 8 bytes. encrypt() gets
-	// each piece in a call of its own, decrypt() all of them in one call
+	// XOR zeros with the keystream. encrypt() gets pieces of 1 to 23 bytes,
+	// each in a call of its own, which start and end at each offset within 8
+	// bytes. decrypt() gets all of the bytes in one call
 	int const size = 4096 + 16 - 1024;
 	std::vector<char> encrypted(std::size_t(size), 0);
-	std::vector<char> decrypted(std::size_t(size), 0);
-	std::vector<span<char>> pieces;
 	int pos = 0;
 	for (int len = 1; pos < size; len = len % 23 + 1)
 	{
-		int const n = std::min(len, size - pos);
-		span<char> piece(encrypted.data() + pos, n);
+		span<char> piece(encrypted.data() + pos, std::min(len, size - pos));
 		rc4.encrypt(piece);
-		pieces.emplace_back(decrypted.data() + pos, n);
-		pos += n;
+		pos += int(piece.size());
 	}
-	rc4.decrypt(pieces);
+	std::vector<char> decrypted(std::size_t(size), 0);
+	span<char> all(decrypted.data(), size);
+	rc4.decrypt(all);
 
+	TEST_CHECK(encrypted == decrypted);
 	for (auto const& v : vectors)
-	{
-		TEST_EQUAL(aux::to_hex({encrypted.data() + v.offset - 1024, 16}), v.hex);
-		TEST_EQUAL(aux::to_hex({decrypted.data() + v.offset - 1024, 16}), v.hex);
-	}
+		TEST_EQUAL(aux::to_hex({decrypted.data() + (v.offset - 1024), 16}), v.hex);
 }
 
 // the whole send buffer is passed to encrypt(), which may be a lot more than
