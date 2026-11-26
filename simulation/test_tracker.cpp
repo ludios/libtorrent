@@ -2892,6 +2892,24 @@ std::vector<char> udp_tracker(char const* in, int const size, Announce const& an
 	return announce(transaction_id);
 }
 
+struct two_ips_config : sim_config
+{
+	chrono::high_resolution_clock::duration hostname_lookup(
+		asio::ip::address const& requestor
+		, std::string hostname
+		, std::vector<asio::ip::address>& result
+		, boost::system::error_code& ec) override
+	{
+		if (hostname == "two-ips.com")
+		{
+			result.push_back(make_address_v4("123.0.0.2"));
+			result.push_back(make_address_v4("123.0.0.4"));
+			return duration_cast<chrono::high_resolution_clock::duration>(chrono::milliseconds(100));
+		}
+		return sim_config::hostname_lookup(requestor, hostname, result, ec);
+	}
+};
+
 } // anonymous namespace
 
 // the message of a UDP tracker's error response is passed on in the alert
@@ -2939,4 +2957,71 @@ TORRENT_TEST(udp_tracker_error_message)
 	sim.run();
 
 	TEST_CHECK(num_errors > 0);
+}
+
+// when one IP of a UDP tracker's host name fails with something other than a
+// timeout, the next one is tried, and its response counts
+TORRENT_TEST(udp_tracker_next_ip_after_error)
+{
+	two_ips_config network_cfg;
+	sim::simulation sim{network_cfg};
+
+	// whichever IP hears from us first answers with an error. The other one
+	// works
+	std::string failing_ip;
+	auto const tracker = [&](char const* ip)
+	{
+		return [&failing_ip, ip](char const* in, int const size) -> std::vector<char>
+		{
+			if (failing_ip.empty()) failing_ip = ip;
+			if (failing_ip == ip)
+			{
+				if (size < 16) return {};
+				char const* ptr = in + 12;
+				return udp_tracker_reply(3, lt::aux::read_uint32(ptr), "go away");
+			}
+			return udp_tracker(in, size, [](std::uint32_t const transaction_id)
+			{
+				// interval: 1800, leechers: 0, seeders: 0
+				return udp_tracker_reply(1, transaction_id
+					, std::string("\0\0\x07\x08\0\0\0\0\0\0\0\0", 12));
+			});
+		};
+	};
+	udp_server tracker1(sim, "123.0.0.2", 8080, tracker("123.0.0.2"));
+	udp_server tracker2(sim, "123.0.0.4", 8080, tracker("123.0.0.4"));
+
+	lt::session_proxy zombie;
+
+	asio::io_context ios(sim, make_address_v4("123.0.0.3"));
+	lt::settings_pack sett = settings();
+	std::unique_ptr<lt::session> ses(new lt::session(sett, ios));
+
+	int num_replies = 0;
+	int num_errors = 0;
+	print_alerts(*ses, [&](lt::session&, lt::alert const* a) {
+		if (alert_cast<lt::tracker_reply_alert>(a)) ++num_replies;
+		else if (alert_cast<lt::tracker_error_alert>(a)) ++num_errors;
+	});
+
+	lt::add_torrent_params p;
+	p.name = "test-torrent";
+	p.save_path = ".";
+	p.info_hashes.v1.assign("abababababababababab");
+	p.trackers.push_back("udp://two-ips.com:8080/announce");
+	ses->async_add_torrent(p);
+
+	sim::timer t(sim, lt::seconds(10), [&](boost::system::error_code const&)
+	{
+		zombie = ses->abort();
+		ses.reset();
+		tracker1.close();
+		tracker2.close();
+	});
+
+	sim.run();
+
+	TEST_CHECK(!failing_ip.empty());
+	TEST_EQUAL(num_replies, 1);
+	TEST_EQUAL(num_errors, 0);
 }

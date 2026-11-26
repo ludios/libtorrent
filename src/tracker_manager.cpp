@@ -124,6 +124,10 @@ bool is_tracker_protocol_supported(string_view const url)
 #endif
 		if (m_abort) return;
 
+		// set_timeout() cancels the wait that's pending when it starts a new
+		// one. That's not a timeout, and the new wait is still to come
+		if (error == boost::asio::error::operation_aborted) return;
+
 		time_point now = clock_type::now();
 		time_duration receive_timeout = now - m_read_time;
 		time_duration completion_timeout = now - m_start_time;
