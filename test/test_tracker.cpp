@@ -552,6 +552,60 @@ TORRENT_TEST(http_peers)
 	std::printf("done\n");
 }
 
+// adding a tracker ahead of the one that last answered must not make
+// current_tracker name another tracker
+TORRENT_TEST(current_tracker_add_tracker)
+{
+	int const http_port = start_web_server();
+
+	settings_pack pack = settings();
+	pack.set_int(settings_pack::tracker_completion_timeout, 2);
+	pack.set_int(settings_pack::tracker_receive_timeout, 1);
+	pack.set_str(settings_pack::listen_interfaces, test_listen_interface());
+
+	auto s = std::make_unique<lt::session>(pack);
+
+	error_code ec;
+	remove_all("tmp4_tracker", ec);
+	create_directory("tmp4_tracker", ec);
+	ofstream file(combine_path("tmp4_tracker", "temporary").c_str());
+	std::shared_ptr<torrent_info> t = ::create_torrent(&file, "temporary", 16 * 1024, 13, false);
+	file.close();
+
+	add_torrent_params addp;
+	char tracker_url[200];
+	std::snprintf(tracker_url, sizeof(tracker_url), "http://127.0.0.1:%d/announce"
+		, http_port);
+	addp.trackers.push_back(tracker_url);
+	addp.tracker_tiers.push_back(1);
+
+	addp.flags &= ~torrent_flags::paused;
+	addp.flags &= ~torrent_flags::auto_managed;
+	addp.flags |= torrent_flags::seed_mode;
+	addp.ti = t;
+	addp.save_path = "tmp4_tracker";
+	torrent_handle h = s->add_torrent(addp);
+
+	// wait to hit the tracker
+	wait_for_alert(*s, tracker_reply_alert::alert_type, "s");
+	TEST_EQUAL(h.status().current_tracker, tracker_url);
+
+	// this tracker's tier puts it first in the list, where the working
+	// tracker was
+	announce_entry ae("http://127.0.0.1:1/announce");
+	ae.tier = 0;
+	h.add_tracker(ae);
+	TEST_EQUAL(h.status().current_tracker, tracker_url);
+
+	std::printf("destructing session\n");
+	s.reset();
+	std::printf("done\n");
+
+	std::printf("stop_web_server\n");
+	stop_web_server();
+	std::printf("done\n");
+}
+
 TORRENT_TEST(current_tracker)
 {
 	// use a invalid tracker port
