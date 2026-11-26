@@ -224,7 +224,7 @@ namespace libtorrent {
 		// only copy values to existing location
 		msg.reserve(protocol.size() + 3 + // protocol part
 			auth.size() + 1 + // auth part
-			host.size() + // host part
+			host.size() + 2 + // host part
 			1 + 5 + // port part
 			escaped_path.size());
 		msg.append(protocol);
@@ -234,7 +234,11 @@ namespace libtorrent {
 			msg.append(auth);
 			msg.append("@");
 		}
+		// parse_url_components() strips the brackets of an IPv6 address
+		bool const ipv6 = host.find(':') != std::string::npos;
+		if (ipv6) msg.append("[");
 		msg.append(host);
+		if (ipv6) msg.append("]");
 		if (port != -1)
 		{
 			msg.append(":");

@@ -52,6 +52,8 @@ TORRENT_TEST(maybe_url_encode)
 	TEST_EQUAL(maybe_url_encode("http://test:test@abc.com/abc<>abc"), "http://test:test@abc.com/abc%3c%3eabc");
 	TEST_EQUAL(maybe_url_encode("http://abc.com/foo bar"), "http://abc.com/foo%20bar");
 	TEST_EQUAL(maybe_url_encode("http://abc.com:80/foo bar"), "http://abc.com:80/foo%20bar");
+	TEST_EQUAL(maybe_url_encode("http://[2001:db8::1]:8080/foo bar"), "http://[2001:db8::1]:8080/foo%20bar");
+	TEST_EQUAL(maybe_url_encode("http://[::1]/foo bar"), "http://[::1]/foo%20bar");
 	TEST_EQUAL(maybe_url_encode("http://abc.com:8080/foo bar"), "http://abc.com:8080/foo%20bar");
 	TEST_EQUAL(maybe_url_encode("abc"), "abc");
 	TEST_EQUAL(maybe_url_encode("http://abc.com/abc"), "http://abc.com/abc");
