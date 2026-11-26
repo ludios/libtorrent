@@ -341,7 +341,7 @@ namespace {
 			auto s = m_io_service;
 			m_thread = std::make_shared<std::thread>([=]
 			{
-				set_thread_name("libtorrent-network-thread");
+				set_thread_name("lt-net-thread");
 				s->run();
 			});
 		}

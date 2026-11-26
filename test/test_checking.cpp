@@ -48,6 +48,10 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/hex.hpp" // to_hex
 #include "libtorrent/aux_/path.hpp"
 #include "libtorrent/aux_/open_mode.hpp"
+#include "libtorrent/aux_/directory.hpp"
+
+#include <fstream>
+#include <set>
 
 namespace {
 
@@ -674,3 +678,53 @@ TORRENT_TEST(inconsistent_hybrid_hashes_outstanding_hash_jobs)
 
 	remove_all(test_dir, ec);
 }
+
+#ifdef TORRENT_LINUX
+// Linux names a thread only if the name has at most 15 characters
+TORRENT_TEST(thread_names)
+{
+	using namespace lt;
+
+	static char const* const test_dir = "test_torrent_dir_thread_names";
+	int const file_sizes[] = { 100000 };
+
+	file_storage fs;
+	create_random_files(test_dir, file_sizes, &fs);
+
+	error_code ec;
+	lt::create_torrent ct(fs, 16 * 1024);
+	set_piece_hashes(ct, ".", ec);
+	TEST_CHECK(!ec);
+
+	std::vector<char> buf;
+	bencode(std::back_inserter(buf), ct.generate());
+	auto ti = std::make_shared<torrent_info>(buf, ec, from_span);
+	TEST_CHECK(ti->is_valid());
+
+	// the files are there, so the torrent's check hashes them, on a hashing
+	// thread
+	add_torrent_params p;
+	p.save_path = ".";
+	p.ti = ti;
+	settings_pack pack = settings();
+	pack.set_int(settings_pack::hashing_threads, 1);
+	session ses(pack);
+	ses.add_torrent(p, ec);
+	TEST_CHECK(!ec);
+	TEST_CHECK(wait_for_alert(ses, torrent_checked_alert::alert_type
+		, "check", pop_alerts::pop_all, seconds(30)));
+
+	std::multiset<std::string> names;
+	for (aux::directory i("/proc/self/task", ec); !i.done(); i.next(ec))
+	{
+		std::ifstream comm("/proc/self/task/" + i.file() + "/comm");
+		std::string name;
+		if (std::getline(comm, name)) names.insert(name);
+	}
+	TEST_EQUAL(names.count("lt-net-thread"), 1);
+	TEST_CHECK(names.count("lt-disk-thread") > 0);
+	TEST_EQUAL(names.count("lt-hash-thread"), 1);
+
+	remove_all(test_dir, ec);
+}
+#endif
