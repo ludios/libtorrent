@@ -351,6 +351,9 @@ namespace aux {
 		{
 			TORRENT_ASSERT(borrow_string == false);
 			name = nullptr;
+			// the length of a borrowed name must not outlive it. A null name
+			// is an owned one
+			name_len = name_is_owned;
 		}
 		else if (borrow_string)
 		{

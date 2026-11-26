@@ -1234,3 +1234,19 @@ TORRENT_TEST(size_on_disk_explicit_pads)
 
 // TODO: test file attributes
 // TODO: test symlinks
+
+// renaming a file to the empty string must not leave it with the length of a
+// name that was borrowed (as the names of a loaded torrent are)
+TORRENT_TEST(rename_file_empty_name)
+{
+	char const filename[] = "test1";
+	file_storage st;
+	st.add_file_borrow({filename, 5}, combine_path("test-torrent-1", "test1")
+		, 10);
+	TEST_EQUAL(st.file_name(file_index_t{0}).to_string(), "test1");
+
+	st.rename_file(file_index_t{0}, "");
+	TEST_EQUAL(st.file_name(file_index_t{0}).size(), 0);
+	// this used to read the old length from a null pointer
+	TEST_CHECK(st.file_path(file_index_t{0}, ".").find("test1") == std::string::npos);
+}
