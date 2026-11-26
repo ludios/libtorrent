@@ -298,7 +298,7 @@ namespace libtorrent {
 		rc4_init(reinterpret_cast<unsigned char const*>(key.data())
 			, std::size_t(key.size()), &m_rc4_incoming);
 		// Discard first 1024 bytes
-		char buf[1024];
+		char buf[1024] = {};
 		span<char> vec(buf, sizeof(buf));
 		decrypt(vec);
 	}
@@ -309,7 +309,7 @@ namespace libtorrent {
 		rc4_init(reinterpret_cast<unsigned char const*>(key.data())
 			, std::size_t(key.size()), &m_rc4_outgoing);
 		// Discard first 1024 bytes
-		char buf[1024];
+		char buf[1024] = {};
 		span<char> vec(buf, sizeof(buf));
 		encrypt(vec);
 	}
