@@ -135,7 +135,9 @@ void copy_range(HANDLE const in_handle, HANDLE const out_handle
 
 		len -= num_read;
 		int buf_offset = 0;
-		while (num_read > 0)
+		// after a short write, write the rest: num_read stays the size of
+		// what's in the buffer, and buf_offset is how much of it is written
+		while (DWORD(buf_offset) < num_read)
 		{
 			OVERLAPPED out_ol{};
 			out_ol.Offset = in_offset & 0xffffffff;
@@ -149,7 +151,6 @@ void copy_range(HANDLE const in_handle, HANDLE const out_handle
 				return;
 			}
 			buf_offset += num_written;
-			num_read -= num_written;
 			in_offset += num_written;
 		}
 	}
@@ -286,7 +287,9 @@ ssize_t copy_range_fallback(int const fd_in, int const fd_out, off_t in_offset
 		}
 		len -= num_read;
 		int buf_offset = 0;
-		while (num_read > 0)
+		// after a short write, write the rest: num_read stays the size of
+		// what's in the buffer, and buf_offset is how much of it is written
+		while (buf_offset < num_read)
 		{
 			auto const ret = ::pwrite(fd_out, buffer + buf_offset
 				, std::size_t(num_read - buf_offset), in_offset);
@@ -297,7 +300,6 @@ ssize_t copy_range_fallback(int const fd_in, int const fd_out, off_t in_offset
 				return -1;
 			}
 			buf_offset += ret;
-			num_read -= ret;
 			in_offset += ret;
 			total_copied += ret;
 		}
