@@ -612,3 +612,65 @@ TORRENT_TEST(inconsistent_hybrid_hashes)
 
 	remove_all(test_dir, ec);
 }
+
+// when a piece of a hybrid torrent passes its v2 hashes but not its v1 hash,
+// the torrent drops its piece picker. Hash jobs of other pieces may still be
+// outstanding, and they must cope with that when they complete
+TORRENT_TEST(inconsistent_hybrid_hashes_outstanding_hash_jobs)
+{
+	using namespace lt;
+
+	static char const* const test_dir = "test_torrent_dir_inconsistent_hybrid_jobs";
+	// the pieces are large, to take long to hash, except for the last one
+	int const piece_size = 4 * 1024 * 1024;
+	int const file_sizes[] = { 12 * piece_size + 3000 };
+
+	file_storage fs;
+	create_random_files(test_dir, file_sizes, &fs);
+
+	error_code ec;
+	lt::create_torrent ct(fs, piece_size);
+	set_piece_hashes(ct, ".", ec);
+	TEST_CHECK(!ec);
+	ct.set_hash(fs.last_piece(), sha1_hash("01234567890123456789"));
+
+	std::vector<char> buf;
+	bencode(std::back_inserter(buf), ct.generate());
+	auto ti = std::make_shared<torrent_info>(buf, ec, from_span);
+	TEST_CHECK(ti->is_valid());
+
+	std::vector<char> data;
+	load_file(fs.file_path(0_file, "."), data, ec, 100000000);
+	TEST_CHECK(!ec);
+	TEST_EQUAL(int(data.size()), file_sizes[0]);
+
+	// the files aren't in this save path, so every piece is missing
+	add_torrent_params p;
+	p.save_path = combine_path(test_dir, "download");
+	p.ti = ti;
+
+	// with more than one hasher thread, the hash job of the small last piece
+	// completes while those of some large pieces are still running
+	settings_pack pack = settings();
+	pack.set_int(settings_pack::hashing_threads, 4);
+	session ses(pack);
+	torrent_handle h = ses.add_torrent(p, ec);
+	TEST_CHECK(!ec);
+	TEST_CHECK(wait_for_alert(ses, torrent_checked_alert::alert_type
+		, "initial check", pop_alerts::pop_all, seconds(30)));
+
+	// the last piece is the inconsistent one. It's added last, so that nothing
+	// makes a new picker after it fails
+	for (piece_index_t const i : ti->piece_range())
+		h.add_piece(i, data.data() + std::int64_t(static_cast<int>(i)) * piece_size);
+
+	TEST_CHECK(wait_for_alert(ses, torrent_error_alert::alert_type
+		, "add pieces", pop_alerts::pop_all, seconds(30)));
+	TEST_EQUAL(h.status().errc, error_code(errors::torrent_inconsistent_hashes));
+
+	// give the remaining hash jobs time to complete
+	std::this_thread::sleep_for(lt::milliseconds(1000));
+	TEST_EQUAL(h.status().errc, error_code(errors::torrent_inconsistent_hashes));
+
+	remove_all(test_dir, ec);
+}

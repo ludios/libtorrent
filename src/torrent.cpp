@@ -4324,6 +4324,10 @@ namespace {
 		if (m_abort) return;
 		if (m_deleted) return;
 
+		// handle_inconsistent_hashes() drops the picker, and the hash jobs of
+		// other pieces may have been outstanding at the time
+		if (!m_picker) return;
+
 		m_picker->completed_hash_job(piece);
 
 		boost::tribool passed = boost::indeterminate;
