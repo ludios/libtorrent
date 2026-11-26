@@ -4062,10 +4062,21 @@ namespace {
 				, [](torrent const* lhs, torrent const* rhs)
 				{ return lhs->sequence_number() < rhs->sequence_number(); });
 
-			std::partial_sort(seeds.begin(), seeds.begin() +
-				std::min(hard_limit, int(seeds.size())), seeds.end()
-				, [this](torrent const* lhs, torrent const* rhs)
-				{ return lhs->seed_rank(m_settings) > rhs->seed_rank(m_settings); });
+			// seed_rank() reads the clock and isn't cheap, so call it once per
+			// torrent, not twice per comparison. It also depends on the time,
+			// and a rank that changes while sorting would break the ordering
+			std::vector<std::pair<int, torrent*>> ranked_seeds;
+			ranked_seeds.reserve(seeds.size());
+			for (torrent* t : seeds)
+				ranked_seeds.emplace_back(t->seed_rank(m_settings), t);
+
+			std::partial_sort(ranked_seeds.begin(), ranked_seeds.begin() +
+				std::min(hard_limit, int(ranked_seeds.size())), ranked_seeds.end()
+				, [](std::pair<int, torrent*> const& lhs, std::pair<int, torrent*> const& rhs)
+				{ return lhs.first > rhs.first; });
+
+			std::transform(ranked_seeds.begin(), ranked_seeds.end(), seeds.begin()
+				, [](std::pair<int, torrent*> const& p) { return p.second; });
 		}
 
 		auto_manage_checking_torrents(checking, checking_limit);
