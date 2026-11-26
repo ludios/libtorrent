@@ -272,6 +272,7 @@ void send_have_none(tcp::socket& s)
 	if (ec) TEST_ERROR(ec.message());
 }
 
+#ifndef TORRENT_DISABLE_EXTENSIONS
 void send_have(tcp::socket& s, int const piece)
 {
 	log("==> have: %d", piece);
@@ -284,6 +285,7 @@ void send_have(tcp::socket& s, int const piece)
 		, boost::asio::transfer_all(), ec);
 	if (ec) TEST_ERROR(ec.message());
 }
+#endif
 
 void send_dht_port(tcp::socket& s, int port)
 {
@@ -582,6 +584,7 @@ void post_torrent(lt::session& ses, torrent_handle const& th, Fun fun)
 }
 #endif
 
+#if !defined TORRENT_DISABLE_EXTENSIONS || !defined TORRENT_DISABLE_PREDICTIVE_PIECES
 bool wait_for_counter(lt::session& ses, char const* name, std::int64_t const value)
 {
 	for (int i = 0; i < 50; ++i)
@@ -593,6 +596,7 @@ bool wait_for_counter(lt::session& ses, char const* name, std::int64_t const val
 	}
 	return false;
 }
+#endif
 
 } // anonymous namespace
 
@@ -1460,6 +1464,7 @@ TORRENT_TEST(dht_port_no_support)
 // TODO: test sending invalid requests (out of bound piece index, offsets and
 // sizes)
 
+#ifndef TORRENT_DISABLE_EXTENSIONS
 // extension message IDs are a single byte on the wire. A peer announcing an
 // ID that doesn't fit used to have it truncated (300 turns into 44), and
 // trigger an assert when writing it
@@ -1518,3 +1523,4 @@ TORRENT_TEST(out_of_range_extension_id)
 
 	print_session_log(*ses);
 }
+#endif // TORRENT_DISABLE_EXTENSIONS
