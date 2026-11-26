@@ -303,6 +303,8 @@ TORRENT_VERSION_NAMESPACE_3
 
 		// the position this torrent has in the download
 		// queue. If the torrent is a seed or finished, this is -1.
+		// It may also be -1 until resume data that has every piece is checked
+		// (see torrent_handle::queue_position()).
 		queue_position_t queue_position{};
 
 		// the total rates for all peers for this torrent. These will usually

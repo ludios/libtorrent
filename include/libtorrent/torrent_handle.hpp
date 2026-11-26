@@ -867,6 +867,10 @@ namespace aux {
 		// greater than the greatest queue position of all existing torrents.
 		// Torrents that are being seeded have -1 as their queue position, since
 		// they're no longer in line to be downloaded.
+		// A torrent that is added with metadata and with resume data that has
+		// every piece isn't assigned a queue position either. If the check of
+		// that data finds that the torrent isn't finished, it's assigned one
+		// then, as if it was added at that time.
 		//
 		// When a torrent is removed or turns into a seed, all torrents with
 		// greater queue positions have their positions decreased to fill in the
@@ -883,6 +887,7 @@ namespace aux {
 		// the queue. Up means closer to the front and down means closer to the
 		// back of the queue. Top and bottom refers to the front and the back of
 		// the queue respectively.
+		// Up and down do nothing for a torrent whose queue position is -1.
 		queue_position_t queue_position() const;
 		void queue_position_up() const;
 		void queue_position_down() const;

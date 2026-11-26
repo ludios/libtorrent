@@ -300,6 +300,9 @@ queue position
 
 The torrents in the front of the queue are started and the rest are ordered by
 their queue position. Any newly added torrent is placed at the end of the queue.
+The exception is a torrent that is added with metadata and with resume data that
+has every piece: it's placed there only if the check of that data finds that the
+torrent isn't finished.
 Once a torrent is removed or turns into a seed, its queue position is -1 and all
 torrents that used to be after it in the queue, decreases their position in
 order to fill the gap.

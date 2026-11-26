@@ -2488,6 +2488,10 @@ aux::vector<download_priority_t, piece_index_t> file_to_piece_prio(
 		// didn't. Like init()'s, it has the pieces that are only padding
 		if (resume_has_all && !is_seed()) need_picker();
 
+		// set_queue_position() didn't queue the torrent when it was added, if it
+		// was expected to be finished by now. Unless it is, queue it
+		if (m_sequence_number == no_pos) set_queue_position(last_pos);
+
 		if (should_start_full_check)
 		{
 			stop_announcing();
@@ -9500,12 +9504,17 @@ namespace {
 		// -1
 		if (m_abort || is_finished()) return;
 
+		// nor may a torrent that isn't queued yet (see set_queue_position())
+		if (m_sequence_number == no_pos) return;
+
 		set_queue_position(queue_position() == queue_position_t{0}
 			? queue_position() : prev(queue_position()));
 	}
 
 	void torrent::queue_down()
 	{
+		if (m_sequence_number == no_pos) return;
+
 		set_queue_position(next(queue_position()));
 	}
 
@@ -9516,6 +9525,21 @@ namespace {
 		// finished torrents may not change their queue positions, as it's set to
 		// -1
 		if ((m_abort || is_finished()) && p != no_pos) return;
+
+		// a torrent that is being added isn't queued if its resume data has
+		// every piece: it's finished if the check of that data passes (if not,
+		// on_resume_data_checked() queues it). Taking it out of the queue then
+		// would move every torrent behind it, and each of those that
+		// post_torrent_updates() reports would be reported again. So while
+		// many such torrents wait for their checks (which take long on slow
+		// storage), the same torrents would be reported over and over
+		if (!m_added && p != no_pos && valid_metadata()
+			&& resume_has_all_pieces(m_add_torrent_params.get(), m_torrent_file->num_pieces()))
+		{
+			// report the new torrent once, as queueing it would
+			state_updated();
+			return;
+		}
 
 		TORRENT_ASSERT((p == no_pos) == is_finished()
 			|| (!m_auto_managed && p == no_pos)

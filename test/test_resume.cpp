@@ -45,6 +45,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/read_resume_data.hpp"
 #include "libtorrent/write_resume_data.hpp"
 #include "libtorrent/aux_/path.hpp"
+#include "libtorrent/aux_/session_interface.hpp" // for no_pos
 #include "libtorrent/file.hpp"
 #include "libtorrent/alert_types.hpp"
 #include "libtorrent/extensions.hpp"
@@ -677,6 +678,10 @@ void test_all_pieces_alerts(settings_pack sett
 	lt::session ses(sett);
 	torrent_handle h = ses.add_torrent(p);
 
+	// the torrent is expected to be finished, so it's not in the download
+	// queue, also while its resume data is being checked
+	TEST_EQUAL(h.queue_position(), no_pos);
+
 	// the piece and file alerts, in their order
 	std::vector<std::string> events;
 	bool checked = false;
@@ -717,6 +722,7 @@ void test_all_pieces_alerts(settings_pack sett
 
 	torrent_status const s = h.status();
 	TEST_EQUAL(s.is_seeding, true);
+	TEST_EQUAL(s.queue_position, no_pos);
 	TEST_EQUAL(s.num_pieces, ti->num_pieces());
 	TEST_EQUAL(s.total_wanted_done, s.total_wanted);
 	TEST_EQUAL(s.total_wanted, ti->total_size() - 22768);
@@ -792,6 +798,8 @@ void test_all_pieces_missing(settings_pack const& sett
 
 	torrent_status const s = h.status();
 	TEST_EQUAL(s.is_seeding, false);
+	// it isn't finished after all, so it's in the download queue now
+	TEST_EQUAL(s.queue_position, queue_position_t{0});
 	TEST_EQUAL(s.num_pieces, 1);
 	TEST_EQUAL(s.pieces.size(), ti->num_pieces());
 	if (s.pieces.size() == ti->num_pieces())
@@ -801,6 +809,66 @@ void test_all_pieces_missing(settings_pack const& sett
 }
 
 } // anonymous namespace
+
+TORRENT_TEST(all_pieces_not_queued)
+{
+	// a torrent whose resume data has every piece doesn't take a position in
+	// the download queue, so the torrents behind it don't move when it's
+	// finished.
+
+	// make all the torrents first, to add them and look at the queue before
+	// the resume data is checked. That takes a while with this many files
+	torrent_args seed_args;
+	seed_args.name("all_pieces_not_queued_seed");
+	for (int i = 0; i < 300; ++i) seed_args.file("1000");
+
+	add_torrent_params seed_params;
+	seed_params.ti = make_test_torrent(seed_args);
+	seed_params.save_path = "all_pieces_not_queued_test";
+	seed_params.have_pieces.resize(seed_params.ti->num_pieces(), true);
+	error_code ec;
+	remove_all(seed_params.save_path, ec);
+	generate_files(*seed_params.ti, seed_params.save_path);
+
+	int const num_downloads = 3;
+	std::vector<add_torrent_params> download_params;
+	for (int i = 0; i < num_downloads; ++i)
+	{
+		add_torrent_params p;
+		p.ti = make_test_torrent(torrent_args()
+			.file(("40000,name=all_pieces_not_queued_" + std::to_string(i)).c_str()));
+		p.save_path = seed_params.save_path;
+		download_params.push_back(std::move(p));
+	}
+
+	lt::session ses(settings());
+	std::vector<torrent_handle> downloads;
+	downloads.push_back(ses.add_torrent(download_params[0]));
+	torrent_handle seed = ses.add_torrent(seed_params);
+	for (int i = 1; i < num_downloads; ++i)
+		downloads.push_back(ses.add_torrent(download_params[std::size_t(i)]));
+
+	auto const check_positions = [&]
+	{
+		TEST_EQUAL(seed.queue_position(), no_pos);
+		for (int i = 0; i < num_downloads; ++i)
+			TEST_EQUAL(downloads[std::size_t(i)].queue_position(), queue_position_t{i});
+	};
+	check_positions();
+
+	// it can't be moved up or down in a queue that it isn't in
+	seed.queue_position_up();
+	check_positions();
+	seed.queue_position_down();
+	check_positions();
+
+	// it can be given a position, but loses it when it's finished
+	seed.queue_position_top();
+
+	TEST_CHECK(wait_for_alert(ses, torrent_finished_alert::alert_type, "all_pieces_not_queued"));
+	TEST_EQUAL(seed.status().is_seeding, true);
+	check_positions();
+}
 
 TORRENT_TEST(all_pieces_missing)
 {
@@ -1564,6 +1632,9 @@ void test_seed_mode(test_mode_t const flags)
 		TEST_CHECK(done);
 		torrent_status const s = h.status();
 		TEST_CHECK(!(s.flags & torrent_flags::seed_mode));
+		// it's downloading now, so it's in the download queue, where it wasn't
+		// put if it was added in seed mode
+		TEST_EQUAL(s.queue_position, queue_position_t{0});
 	}
 	else
 	{
