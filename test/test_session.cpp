@@ -524,6 +524,26 @@ TORRENT_TEST(dht_upload_rate_overflow)
 
 #endif // TORRENT_DISABLE_DHT
 
+// with a proxy for peer connections, the listen socket doesn't accept
+// incoming connections, and has no TCP socket to set the buffer sizes of
+TORRENT_TEST(socket_buffer_size_with_proxy)
+{
+	settings_pack p = settings();
+	p.set_int(settings_pack::proxy_type, settings_pack::socks5);
+	p.set_str(settings_pack::proxy_hostname, "127.0.0.1");
+	p.set_int(settings_pack::proxy_port, 1080);
+	p.set_bool(settings_pack::proxy_peer_connections, true);
+	lt::session ses(p);
+
+	settings_pack sett;
+	sett.set_int(settings_pack::send_socket_buffer_size, 0x20000);
+	sett.set_int(settings_pack::recv_socket_buffer_size, 0x20000);
+	ses.apply_settings(sett);
+
+	// this returns once the settings above have been applied
+	TEST_EQUAL(ses.get_settings().get_int(settings_pack::send_socket_buffer_size), 0x20000);
+}
+
 TORRENT_TEST(reopen_network_sockets)
 {
 	auto count_alerts = [](session& ses, int const listen, int const portmap)

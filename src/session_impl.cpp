@@ -6636,6 +6636,10 @@ namespace {
 					, l->udp_sock->sock.local_port(), print_error(ec).c_str());
 			}
 #endif
+			// a listen socket that doesn't accept incoming connections (e.g.
+			// when peer connections go through a proxy) doesn't have a TCP
+			// socket
+			if (!l->sock) continue;
 			ec.clear();
 			set_socket_buffer_size(*l->sock, m_settings, ec);
 #ifndef TORRENT_DISABLE_LOGGING
