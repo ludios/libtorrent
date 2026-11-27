@@ -1209,6 +1209,81 @@ TORRENT_TEST(stop_event_after_upload)
 	TEST_EQUAL(stopped, 2);
 }
 
+// runs a swarm in which the session under test, with
+// announce_stopped_without_transfer off, seeds the torrent to another session
+// in the first seconds, then keeps seeding. The torrent announces to a tracker
+// at http://2.2.2.2:8080 for each of the paths, which answers with an interval
+// of 500 seconds. on_tick is called each second, and the session shuts down
+// 700 seconds in. Returns the requests that each path got
+std::map<std::string, std::vector<std::string>> seed_announces(
+	std::vector<std::string> const& paths
+	, std::function<void(lt::settings_pack&)> new_session
+	, std::function<void(int, lt::session&)> on_tick)
+{
+	using sim::asio::ip::address_v4;
+	sim::default_config network_cfg;
+	sim::simulation sim{network_cfg};
+
+	sim::asio::io_context web_server(sim, make_address_v4("2.2.2.2"));
+	sim::http_server http(web_server, 8080);
+
+	std::map<std::string, std::vector<std::string>> announces;
+	for (auto const& path : paths)
+	{
+		http.register_handler(path
+		, [&announces, path](std::string method, std::string req
+			, std::map<std::string, std::string>&)
+		{
+			TEST_EQUAL(method, "GET");
+			announces[path].push_back(req);
+			return sim::send_response(200, "OK", 26) + "d8:intervali500e5:peers0:e";
+		});
+	}
+
+	setup_swarm(2, swarm_test::upload | swarm_test::no_auto_stop, sim
+		, settings(), lt::add_torrent_params()
+		// add session
+		, [&](lt::settings_pack& pack) {
+			pack.set_bool(settings_pack::announce_stopped_without_transfer, false);
+			new_session(pack);
+		}
+		// add torrent
+		, [&](lt::add_torrent_params& params) {
+			for (auto const& path : paths)
+				params.trackers.push_back("http://2.2.2.2:8080" + path);
+		}
+		// on alert
+		, [](lt::alert const*, lt::session&) {}
+		// terminate
+		, [&](int const ticks, lt::session& ses) -> bool {
+			on_tick(ticks, ses);
+			return ticks > 700;
+		});
+
+	return announces;
+}
+
+bool is_regular_announce_with_upload(std::string const& req)
+{
+	return req.find("&event=") == std::string::npos
+		&& req.find("&uploaded=0&") == std::string::npos;
+}
+
+// with announce_stopped_without_transfer off, a torrent that has uploaded
+// nothing since an announce that the tracker answered doesn't announce
+// event=stopped, although it uploaded before that announce
+TORRENT_TEST(omit_stop_event_after_answered_announce)
+{
+	auto announces = seed_announces({"/announce"}
+		, [](lt::settings_pack&) {}
+		, [](int, lt::session&) {});
+
+	auto const& reqs = announces["/announce"];
+	TEST_CHECK(std::any_of(reqs.begin(), reqs.end(), &is_regular_announce_with_upload));
+	for (auto const& r : reqs)
+		TEST_CHECK(r.find("&event=stopped") == std::string::npos);
+}
+
 TORRENT_TEST(test_warning)
 {
 	announce_entry_test(
