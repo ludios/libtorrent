@@ -1070,16 +1070,18 @@ namespace aux {
 			// increase network load.
 			allow_multiple_connections_per_pid,
 
-			// when set to false, a torrent doesn't send event=stopped to a
-			// tracker if the last announce that the tracker responded to
-			// reported the same uploaded and downloaded counts. Such an
-			// announce would only take this client off the tracker's list of
-			// peers, which the tracker also does once this client has gone
-			// without announcing for a while. At most
+			// when set to false, a torrent that isn't private doesn't send
+			// event=stopped to a tracker if the last announce that the
+			// tracker responded to reported the same uploaded and downloaded
+			// counts. Such an announce would mostly just take this client off
+			// the tracker's list of peers, which most trackers also do once
+			// this client has gone without announcing for a while. At most
 			// max_concurrent_http_announces HTTP announces are in flight at a
 			// time, so when tens of thousands of torrents stop at once (for
 			// example, when the session is paused or shut down), sending
-			// event=stopped for each of them can take minutes.
+			// event=stopped for each of them can take minutes. A private
+			// torrent still sends it, since a private tracker can also count
+			// seeding time and download slots by it.
 			announce_stopped_without_transfer,
 
 			max_bool_setting_internal

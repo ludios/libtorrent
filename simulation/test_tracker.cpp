@@ -1794,6 +1794,35 @@ TORRENT_TEST(tracker_user_agent_privacy_mode_private_torrent)
 	TEST_EQUAL(got_announce, true);
 }
 
+// with announce_stopped_without_transfer off, a private torrent still announces
+// event=stopped when it has transferred nothing since its last announce
+TORRENT_TEST(stop_event_without_transfer_private_torrent)
+{
+	int started = 0;
+	int stopped = 0;
+	tracker_test(
+		[](lt::add_torrent_params& p, lt::session& ses)
+		{
+			settings_pack pack;
+			pack.set_bool(settings_pack::announce_stopped_without_transfer, false);
+			ses.apply_settings(pack);
+			p.ti = make_torrent(true);
+			p.info_hashes = lt::info_hash_t{};
+			return 5;
+		},
+		[&](std::string method, std::string req
+			, std::map<std::string, std::string>&)
+		{
+			if (req.find("&event=started") != std::string::npos) ++started;
+			if (req.find("&event=stopped") != std::string::npos) ++stopped;
+			return sim::send_response(200, "OK", 27) + "d8:intervali1800e5:peers0:e";
+		}
+		, [](torrent_handle h) {}
+		, [](torrent_handle h) {});
+	TEST_CHECK(started > 0);
+	TEST_EQUAL(stopped, started);
+}
+
 bool test_ssrf(char const* announce_path, bool const feature_on
 	, char const* tracker_url)
 {

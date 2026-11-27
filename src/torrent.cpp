@@ -3426,6 +3426,7 @@ namespace {
 
 					if (!announce_stopped_without_transfer
 						&& req.event == event_t::stopped
+						&& !req.private_torrent
 						&& req.uploaded == a.reported_uploaded
 						&& req.downloaded == a.reported_downloaded)
 						continue;
