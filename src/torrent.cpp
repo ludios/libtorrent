@@ -3424,13 +3424,6 @@ namespace {
 					if (!a.start_sent && req.event == event_t::stopped)
 						continue;
 
-					if (!announce_stopped_without_transfer
-						&& req.event == event_t::stopped
-						&& !req.private_torrent
-						&& req.uploaded == a.reported_uploaded
-						&& req.downloaded == a.reported_downloaded)
-						continue;
-
 					if (state.done) continue;
 
 #ifndef TORRENT_DISABLE_LOGGING
@@ -3466,6 +3459,25 @@ namespace {
 							{
 								state.done = true;
 							}
+						}
+						continue;
+					}
+
+					// a tracker that already has the counts that this
+					// event=stopped would report counts as announced to, so that
+					// the trackers after it aren't announced to in its place
+					if (!announce_stopped_without_transfer
+						&& e == event_t::stopped
+						&& !req.private_torrent
+						&& req.uploaded == a.reported_uploaded
+						&& req.downloaded == a.reported_downloaded)
+					{
+						state.sent_announce = true;
+						if (a.is_working()
+							&& !announce_to_all_trackers
+							&& !announce_to_all_tiers)
+						{
+							state.done = true;
 						}
 						continue;
 					}

@@ -1284,6 +1284,36 @@ TORRENT_TEST(omit_stop_event_after_answered_announce)
 		TEST_CHECK(r.find("&event=stopped") == std::string::npos);
 }
 
+// with announce_stopped_without_transfer off, a tracker whose event=stopped is
+// omitted counts as announced to. So another tracker of the same tier, which
+// only got event=started, doesn't get event=stopped in its place
+TORRENT_TEST(omit_stop_event_counts_as_announced)
+{
+	auto announces = seed_announces({"/first", "/second"}
+		// both trackers of the tier get event=started
+		, [](lt::settings_pack& pack) {
+			pack.set_bool(settings_pack::announce_to_all_trackers, true);
+			pack.set_bool(settings_pack::announce_to_all_tiers, false);
+		}
+		// once the upload is done, only the first tracker is announced to
+		, [](int const ticks, lt::session& ses) {
+			if (ticks != 100) return;
+			lt::settings_pack pack;
+			pack.set_bool(settings_pack::announce_to_all_trackers, false);
+			ses.apply_settings(std::move(pack));
+		});
+
+	auto const& first = announces["/first"];
+	TEST_CHECK(std::any_of(first.begin(), first.end(), &is_regular_announce_with_upload));
+	for (auto const& r : first)
+		TEST_CHECK(r.find("&event=stopped") == std::string::npos);
+
+	auto const& second = announces["/second"];
+	TEST_CHECK(!second.empty());
+	for (auto const& r : second)
+		TEST_CHECK(r.find("&event=started") != std::string::npos);
+}
+
 TORRENT_TEST(test_warning)
 {
 	announce_entry_test(
