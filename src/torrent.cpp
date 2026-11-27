@@ -3359,6 +3359,7 @@ namespace {
 
 		bool const announce_to_all_tiers = settings().get_bool(settings_pack::announce_to_all_tiers);
 		bool const announce_to_all_trackers = settings().get_bool(settings_pack::announce_to_all_trackers);
+		bool const announce_stopped_without_transfer = settings().get_bool(settings_pack::announce_stopped_without_transfer);
 #ifndef TORRENT_DISABLE_LOGGING
 		int idx = -1;
 		if (should_log())
@@ -3421,6 +3422,12 @@ namespace {
 					// if we haven't sent an event=start to the tracker, there's no
 					// point in sending an event=stopped
 					if (!a.start_sent && req.event == event_t::stopped)
+						continue;
+
+					if (!announce_stopped_without_transfer
+						&& req.event == event_t::stopped
+						&& req.uploaded == a.reported_uploaded
+						&& req.downloaded == a.reported_downloaded)
 						continue;
 
 					if (state.done) continue;
@@ -3755,6 +3762,8 @@ namespace {
 				if (resp.downloaded >= 0) a.scrape_downloaded = resp.downloaded;
 				if (!a.start_sent && r.event == event_t::started)
 					a.start_sent = true;
+				a.reported_uploaded = r.uploaded;
+				a.reported_downloaded = r.downloaded;
 				if (!a.complete_sent && r.event == event_t::completed)
 				{
 					a.complete_sent = true;

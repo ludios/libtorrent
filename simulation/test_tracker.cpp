@@ -1094,6 +1094,121 @@ TORRENT_TEST(paused_session_in_flight_announce)
 	sim.run();
 }
 
+// with announce_stopped_without_transfer off, a torrent that has transferred
+// nothing since its last announce doesn't announce event=stopped when the
+// session is paused or shut down, and announces event=started again when the
+// session is resumed
+TORRENT_TEST(omit_stop_event_without_transfer)
+{
+	using sim::asio::ip::address_v4;
+	sim_config network_cfg;
+	sim::simulation sim{network_cfg};
+
+	sim::asio::io_context tracker_ios(sim, make_address_v4("123.0.0.2"));
+	sim::http_server http(tracker_ios, 8080);
+
+	std::vector<std::string> announces;
+	http.register_handler("/announce",
+		[&announces](std::string method, std::string req, std::map<std::string, std::string>&)
+		{
+			TEST_EQUAL(method, "GET");
+
+			announces.push_back(req);
+			char response[500];
+			int const size = std::snprintf(response, sizeof(response), "d8:intervali1800e5:peers6:aaaaaae");
+			return sim::send_response(200, "OK", size) + response;
+		}
+	);
+
+	lt::session_proxy zombie;
+
+	asio::io_context ios(sim, make_address_v4("123.0.0.3"));
+	lt::settings_pack sett = settings();
+	sett.set_bool(settings_pack::announce_stopped_without_transfer, false);
+	auto ses = std::make_unique<lt::session>(sett, ios);
+
+	ses->set_alert_notify(std::bind(&on_alert_notify, ses.get()));
+
+	lt::add_torrent_params p;
+	p.name = "test-torrent";
+	p.save_path = ".";
+	p.info_hashes.v1.assign("abababababababababab");
+	p.trackers.push_back("http://123.0.0.2:8080/announce");
+	ses->async_add_torrent(p);
+
+	sim::timer t1(sim, lt::seconds(5), [&](boost::system::error_code const&) {
+		TEST_EQUAL(announces.size(), 1);
+		ses->pause();
+	});
+
+	sim::timer t2(sim, lt::seconds(10), [&](boost::system::error_code const&) {
+		TEST_EQUAL(announces.size(), 1);
+		ses->resume();
+	});
+
+	sim::timer t3(sim, lt::seconds(15), [&](boost::system::error_code const&) {
+		TEST_EQUAL(announces.size(), 2);
+		zombie = ses->abort();
+		ses.reset();
+	});
+
+	sim.run();
+
+	TEST_EQUAL(announces.size(), 2);
+	for (auto const& a : announces)
+		TEST_CHECK(a.find("&event=started") != std::string::npos);
+}
+
+// with announce_stopped_without_transfer off, a torrent that has uploaded since
+// its last announce still announces event=stopped when the session shuts down
+TORRENT_TEST(stop_event_after_upload)
+{
+	using sim::asio::ip::address_v4;
+	sim::default_config network_cfg;
+	sim::simulation sim{network_cfg};
+
+	sim::asio::io_context web_server(sim, make_address_v4("2.2.2.2"));
+	sim::http_server http(web_server, 8080);
+
+	std::vector<std::string> announces;
+	http.register_handler("/announce"
+	, [&](std::string method, std::string req
+		, std::map<std::string, std::string>&)
+	{
+		TEST_EQUAL(method, "GET");
+		announces.push_back(req);
+
+		char response[500];
+		int const size = std::snprintf(response, sizeof(response), "d8:intervali1800e5:peers0:e");
+		return sim::send_response(200, "OK", size) + response;
+	});
+
+	// the swarm shuts down once the other node has downloaded the torrent
+	setup_swarm(2, swarm_test::upload, sim, settings(), lt::add_torrent_params()
+		// add session
+		, [](lt::settings_pack& pack) {
+			pack.set_bool(settings_pack::announce_stopped_without_transfer, false);
+		}
+		// add torrent
+		, [](lt::add_torrent_params& params) {
+			params.trackers.push_back("http://2.2.2.2:8080/announce");
+		}
+		// on alert
+		, [](lt::alert const*, lt::session&) {}
+		// terminate
+		, [](int, lt::session&) { return false; });
+
+	// one event=stopped for each of the hybrid torrent's v1 and v2 info hashes
+	int stopped = 0;
+	for (auto const& a : announces)
+	{
+		if (a.find("&event=stopped") == std::string::npos) continue;
+		++stopped;
+		TEST_CHECK(a.find("&uploaded=0&") == std::string::npos);
+	}
+	TEST_EQUAL(stopped, 2);
+}
+
 TORRENT_TEST(test_warning)
 {
 	announce_entry_test(

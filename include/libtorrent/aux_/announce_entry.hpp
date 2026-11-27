@@ -90,6 +90,11 @@ namespace aux {
 		int scrape_complete = -1;
 		int scrape_downloaded = -1;
 
+		// the uploaded and downloaded counts of the last announce that this
+		// tracker responded to. Valid while start_sent is set.
+		std::int64_t reported_uploaded = 0;
+		std::int64_t reported_downloaded = 0;
+
 		// the number of times in a row we have failed to announce to this
 		// tracker.
 		std::uint8_t fails : 7;
