@@ -1089,7 +1089,7 @@ TORRENT_TEST(fastresume_spanning_piece_missing_file)
 	TEST_CHECK(!ec);
 
 	std::ofstream file(fs.file_path(0_file, save_path).c_str());
-	file.write("x", 1);
+	file << std::string(resume_piece_size / 2, 'x');
 	file.close();
 
 	add_torrent_params rd;
@@ -1106,6 +1106,58 @@ TORRENT_TEST(fastresume_spanning_piece_missing_file)
 	TEST_CHECK(!valid);
 	TEST_EQUAL(se.ec, error_code(errors::mismatching_file_size));
 	TEST_EQUAL(static_cast<int>(se.file()), 1);
+
+	delete_dirs(save_path);
+}
+
+TORRENT_TEST(fastresume_file_shorter_than_completed_piece)
+{
+	int const resume_piece_size = 0x4000;
+	std::string const save_path = complete("temp_storage_short_resume");
+
+	// "missing" has no completed piece, so it doesn't have to exist. "short"
+	// has to be long enough for piece 1, but not for piece 2
+	file_storage fs;
+	fs.add_file(combine_path("test", "missing"), resume_piece_size);
+	fs.add_file(combine_path("test", "short"), resume_piece_size * 2);
+	fs.set_piece_length(resume_piece_size);
+	fs.set_num_pieces(aux::calc_num_pieces(fs));
+
+	add_torrent_params rd;
+	rd.have_pieces.resize(fs.num_pieces(), false);
+	rd.have_pieces.set_bit(1_piece);
+
+	for (int const size : {resume_piece_size - 1, resume_piece_size})
+	{
+		delete_dirs(save_path);
+		error_code ec;
+		create_directories(combine_path(save_path, "test"), ec);
+		TEST_CHECK(!ec);
+
+		std::ofstream file(fs.file_path(1_file, save_path).c_str());
+		file << std::string(std::size_t(size), 'x');
+		file.close();
+
+		aux::vector<std::string, file_index_t> links;
+		aux::vector<download_priority_t, file_index_t> priorities;
+		stat_cache stat;
+		storage_error se;
+		bool const valid = aux::verify_resume_data(rd, links, fs, priorities
+			, stat, save_path, se);
+
+		if (size < resume_piece_size)
+		{
+			TEST_CHECK(!valid);
+			TEST_EQUAL(se.ec, error_code(errors::mismatching_file_size));
+			TEST_EQUAL(static_cast<int>(se.file()), 1);
+			TEST_CHECK(se.operation == operation_t::check_resume);
+		}
+		else
+		{
+			TEST_CHECK(valid);
+			TEST_CHECK(!se);
+		}
+	}
 
 	delete_dirs(save_path);
 }

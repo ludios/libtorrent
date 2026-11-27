@@ -559,7 +559,8 @@ std::int64_t get_filesize(stat_cache& stat, file_index_t const file_index
 #endif
 
 		// parse have bitmask. Verify that files touched by completed pieces
-		// actually exist. A completed piece may span multiple files.
+		// actually exist, and are long enough to have their parts of those
+		// pieces. A completed piece may span multiple files.
 		for (file_index_t const file_index : fs.file_range())
 		{
 			// files with priority zero may not have been saved to disk at their
@@ -580,18 +581,26 @@ std::int64_t get_filesize(stat_cache& stat, file_index_t const file_index
 			piece_index_t const end_piece = std::min(file_end_piece
 				, rd.have_pieces.end_index());
 
-			bool has_completed_resume_piece = false;
-			for (piece_index_t piece = start_piece; piece < end_piece; ++piece)
+			// the end of the last completed piece that has a part of this file
+			piece_index_t last_end = end_piece;
+			while (last_end > start_piece && !rd.have_pieces.get_bit(prev(last_end)))
+				--last_end;
+
+			if (last_end == start_piece) continue;
+
+			std::int64_t const size = get_filesize(stat, file_index, fs
+				, save_path, ec);
+			if (size < 0) return false;
+
+			if (size < std::min(fs.file_size(file_index)
+				, std::int64_t(static_cast<int>(last_end)) * fs.piece_length()
+					- fs.file_offset(file_index)))
 			{
-				if (!rd.have_pieces.get_bit(piece)) continue;
-				has_completed_resume_piece = true;
-				break;
-			}
-
-			if (!has_completed_resume_piece) continue;
-
-			if (get_filesize(stat, file_index, fs, save_path, ec) < 0)
+				ec.ec = errors::mismatching_file_size;
+				ec.file(file_index);
+				ec.operation = operation_t::check_resume;
 				return false;
+			}
 		}
 		return true;
 	}
