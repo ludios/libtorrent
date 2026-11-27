@@ -1115,25 +1115,30 @@ TORRENT_TEST(fastresume_file_shorter_than_completed_piece)
 	int const resume_piece_size = 0x4000;
 	std::string const save_path = complete("temp_storage_short_resume");
 
-	// "missing" has no completed piece, so it doesn't have to exist. "short"
-	// has to be long enough for piece 1, but not for piece 2
+	// "short" starts in the middle of piece 0. It has to be long enough for
+	// piece 2, the last completed piece that it has a part of
 	file_storage fs;
-	fs.add_file(combine_path("test", "missing"), resume_piece_size);
-	fs.add_file(combine_path("test", "short"), resume_piece_size * 2);
+	fs.add_file(combine_path("test", "first"), resume_piece_size / 2);
+	fs.add_file(combine_path("test", "short"), resume_piece_size * 3);
 	fs.set_piece_length(resume_piece_size);
 	fs.set_num_pieces(aux::calc_num_pieces(fs));
 
 	add_torrent_params rd;
 	rd.have_pieces.resize(fs.num_pieces(), false);
-	rd.have_pieces.set_bit(1_piece);
+	rd.have_pieces.set_bit(0_piece);
+	rd.have_pieces.set_bit(2_piece);
 
-	for (int const size : {resume_piece_size - 1, resume_piece_size})
+	int const needed = resume_piece_size * 3 - resume_piece_size / 2;
+	for (int const size : {needed - 1, needed})
 	{
 		delete_dirs(save_path);
 		error_code ec;
 		create_directories(combine_path(save_path, "test"), ec);
 		TEST_CHECK(!ec);
 
+		std::ofstream first(fs.file_path(0_file, save_path).c_str());
+		first << std::string(resume_piece_size / 2, 'x');
+		first.close();
 		std::ofstream file(fs.file_path(1_file, save_path).c_str());
 		file << std::string(std::size_t(size), 'x');
 		file.close();
@@ -1145,7 +1150,7 @@ TORRENT_TEST(fastresume_file_shorter_than_completed_piece)
 		bool const valid = aux::verify_resume_data(rd, links, fs, priorities
 			, stat, save_path, se);
 
-		if (size < resume_piece_size)
+		if (size < needed)
 		{
 			TEST_CHECK(!valid);
 			TEST_EQUAL(se.ec, error_code(errors::mismatching_file_size));
@@ -1157,6 +1162,47 @@ TORRENT_TEST(fastresume_file_shorter_than_completed_piece)
 			TEST_CHECK(valid);
 			TEST_CHECK(!se);
 		}
+	}
+
+	delete_dirs(save_path);
+}
+
+TORRENT_TEST(fastresume_pieces_end_before_missing_file)
+{
+	int const resume_piece_size = 0x4000;
+	std::string const save_path = complete("temp_storage_pieces_end_resume");
+	delete_dirs(save_path);
+
+	// a force recheck has no pieces, and resume data saved during a check
+	// has only those that it got to. "missing" starts after both
+	file_storage fs;
+	fs.add_file(combine_path("test", "first"), resume_piece_size);
+	fs.add_file(combine_path("test", "missing"), resume_piece_size);
+	fs.set_piece_length(resume_piece_size);
+	fs.set_num_pieces(aux::calc_num_pieces(fs));
+
+	error_code ec;
+	create_directories(combine_path(save_path, "test"), ec);
+	TEST_CHECK(!ec);
+
+	std::ofstream file(fs.file_path(0_file, save_path).c_str());
+	file << std::string(resume_piece_size, 'x');
+	file.close();
+
+	for (int const num_pieces : {0, 1})
+	{
+		add_torrent_params rd;
+		rd.have_pieces.resize(num_pieces, true);
+
+		aux::vector<std::string, file_index_t> links;
+		aux::vector<download_priority_t, file_index_t> priorities;
+		stat_cache stat;
+		storage_error se;
+		bool const valid = aux::verify_resume_data(rd, links, fs, priorities
+			, stat, save_path, se);
+
+		TEST_CHECK(valid);
+		TEST_CHECK(!se);
 	}
 
 	delete_dirs(save_path);

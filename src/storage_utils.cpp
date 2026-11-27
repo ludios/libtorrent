@@ -586,7 +586,7 @@ std::int64_t get_filesize(stat_cache& stat, file_index_t const file_index
 			while (last_end > start_piece && !rd.have_pieces.get_bit(prev(last_end)))
 				--last_end;
 
-			if (last_end == start_piece) continue;
+			if (last_end <= start_piece) continue;
 
 			std::int64_t const size = get_filesize(stat, file_index, fs
 				, save_path, ec);
